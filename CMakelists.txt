@@ -5,14 +5,18 @@ set (CMAKE_CXX_STANDARD 17)
 
 add_executable(Krakatoa
     src/main.cpp
+	src/app.h
+	src/app.cpp
 	src/logger.h
 	src/logger.cpp
 	src/w_window.h
 	src/w_window.cpp
+	src/glfw_window.h
+	src/glfw_window.cpp
 	src/dx12_renderer.h
 	src/dx12_renderer.cpp
-	src/app.h
-	src/app.cpp
+	src/vulkan_graphics.h
+	src/vulkan_graphics.cpp
 )
 
 # Set output name for the addon

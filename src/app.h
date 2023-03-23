@@ -1,18 +1,19 @@
 #pragma once
-#include "w_window.h"
+#include "glfw_window.h"
 #include "dx12_renderer.h"
 #include "klein/klein.hpp"
-#include "app.h"
+#include "vulkan_graphics.h"
 
 class GraphicsApplication {
-	ApplicationWindow app_window;
+	GLFWWindowImpl* app_window = nullptr;
+	VulkanGraphics* graphics = nullptr;
 
 public:
 	bool shouldRun;
 
 	void Initialize();
-	void StartLoop();
-	void Destroy();
+	void Edulcorate();
+	void Run();
 
 	GraphicsApplication();
 	~GraphicsApplication();

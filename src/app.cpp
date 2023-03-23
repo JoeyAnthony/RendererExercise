@@ -1,22 +1,22 @@
 #include "app.h"
-#include "w_window.h"
 
 void GraphicsApplication::Initialize()
 {
-	WindowConfig config;
-	app_window.Initialize(config);
+	app_window = new GLFWWindowImpl();
+	graphics = new VulkanGraphics();
 }
 
-void GraphicsApplication::StartLoop()
+void GraphicsApplication::Edulcorate()
 {
-	while (shouldRun) {
-		app_window.UpdateWindow();
+	delete app_window;
+	delete graphics;
+}
+
+void GraphicsApplication::Run()
+{
+	while (app_window->GetShouldClose() == false) {
+		app_window->UpdateWindow();
 	}
-}
-
-void GraphicsApplication::Destroy()
-{
-
 }
 
 GraphicsApplication::GraphicsApplication() : shouldRun(true)
@@ -25,5 +25,5 @@ GraphicsApplication::GraphicsApplication() : shouldRun(true)
 
 GraphicsApplication::~GraphicsApplication()
 {
-
+	Edulcorate();
 }

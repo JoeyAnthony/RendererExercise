@@ -1,7 +1,7 @@
 #pragma once
-#include "klein/klein.hpp"
-#include <Windows.h>
 #include <string>
+#include <map>
+#include <Windows.h>
 
 struct WindowConfig {
 	std::string window_name;
@@ -18,18 +18,24 @@ struct WindowConfig {
 		pos_X = CW_USEDEFAULT;
 		pos_y = CW_USEDEFAULT;
 		windowed = true;
+		window_name = "Graphics Application";
+		window_text = "Graphics Application";
 	}
 };
 
 class ApplicationWindow {
-	HINSTANCE hInstance;
+	HINSTANCE hinstance;
 	HWND hwindow;
 
 public:
+	bool should_quit;
+
 	ApplicationWindow();
 	~ApplicationWindow();
 
 	void Initialize(const WindowConfig& config);
 	void Destroy();
 	void UpdateWindow();
+	bool GetShouldQuit();
+	LRESULT WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 };
