@@ -1,5 +1,8 @@
 #include "vulkan_graphics.h"
 #include <GLFW/glfw3.h>
+
+#include <map>
+
 #include "logger.h"
 
 bool VulkanGraphics::Initialize()
@@ -31,7 +34,6 @@ bool VulkanGraphics::Initialize()
 		create_info.enabledExtensionCount = glfw_extension_count;
 		create_info.ppEnabledExtensionNames = glfw_extensions;
 	}
-	create_info.enabledLayerCount = 0;
 	for (int i = 0; i < glfw_extension_count; i++) {
 		required_extensions.push_back(glfw_extensions[i]);
 		LOG << "GLFW extension found: " << glfw_extensions[i];
@@ -80,15 +82,27 @@ bool VulkanGraphics::Initialize()
 		LOG << "Not all GLFW extensions found. Found: " << glfw_extension_count;
 	}
 
+
+	// Temp delete later
+	uint32_t layerCount;
+	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+	std::vector<VkLayerProperties> availableLayers(layerCount);
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+	//Enable validation Layers
+	create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers_.size());
+	create_info.ppEnabledLayerNames = validation_layers_.data();
+
 	LOG; //insert new line
 	LOG << "Create VULKAN Instance";
 	// Create vulkan instance
-	VkResult res = vkCreateInstance(&create_info, nullptr, &instance);
+	VkResult res = vkCreateInstance(&create_info, nullptr, &instance_);
 	if (res != VK_SUCCESS) {
 		LOG << "Vulkan initialization error: " << res;
 		return false;
 	}
 
+	selectPhysicalDevice();
 	return true;
 }
 
@@ -139,7 +153,53 @@ bool VulkanGraphics::EnableValidationLayers()
 
 void VulkanGraphics::Edulcorate()
 {
-	vkDestroyInstance(instance, nullptr);
+	vkDestroyInstance(instance_, nullptr);
+}
+
+void VulkanGraphics::PopulateDebugMessengerCreateInfoStruct(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
+{
+	createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	
+	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+		| VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+		| VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	
+	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+		| VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+		| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+		| VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT;
+
+	//createInfo.pfnUserCallback;
+
+}
+
+void VulkanGraphics::selectPhysicalDevice()
+{
+	uint32_t device_count;
+	vkEnumeratePhysicalDevices(instance_, &device_count, nullptr);
+
+	VkPhysicalDevice* found_devices = new VkPhysicalDevice[device_count];
+	vkEnumeratePhysicalDevices(instance_, &device_count, found_devices);
+
+	std::multimap<uint32_t, VkPhysicalDevice> device_scores;
+
+	for (int i = 0; i < device_count; i++) {
+		// Use VkPhysicalDeviceProperties2 or pNext value
+		VkPhysicalDevice device = found_devices[i];
+		VkPhysicalDeviceProperties device_properties;
+		VkPhysicalDeviceFeatures device_features;
+
+		vkGetPhysicalDeviceProperties(device, &device_properties);
+		vkGetPhysicalDeviceFeatures(device, &device_features);
+
+		device_properties.limits.maxMemoryAllocationCount;
+		device_properties.deviceType;
+
+		LOG << "DEVICE FOUND\t" << device_properties.deviceName;
+	}
+	
+	delete[] found_devices;
 }
 
 VulkanGraphics::VulkanGraphics()

@@ -3,7 +3,9 @@
 #include <vulkan/vulkan_structs.hpp>
 
 class VulkanGraphics {
-	VkInstance instance;
+	VkInstance instance_;
+	std::vector<const char*> validation_layers_ = { "VK_LAYER_KHRONOS_validation" };
+	VkPhysicalDevice selected_device_ = VK_NULL_HANDLE;
 
 	std::vector<const char*> validation_layers = { "VK_LAYER_KHRONOS_validation" };
 
@@ -12,6 +14,8 @@ public:
 	bool CheckValidationLayerSupport();
 	bool EnableValidationLayers();
 	void Edulcorate();
+	void PopulateDebugMessengerCreateInfoStruct(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
+	void selectPhysicalDevice();
 
 	VulkanGraphics();
 	~VulkanGraphics();
