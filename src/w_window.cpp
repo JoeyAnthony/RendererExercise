@@ -68,7 +68,7 @@ void ApplicationWindow::Initialize(const WindowConfig& config)
         windowStyle,
 
         // Size and position
-        config.pos_X, config.pos_y, config.size_x, config.size_y,
+        config.pos_X, config.pos_y, config.width, config.height,
 
         NULL,
         NULL,

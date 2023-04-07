@@ -17,6 +17,8 @@ add_executable(Krakatoa
 	src/dx12_renderer.cpp
 	src/vulkan_graphics.h
 	src/vulkan_graphics.cpp
+	src/bp_window.h
+	src/bp_window.cpp
 )
 
 # Set output name for the addon

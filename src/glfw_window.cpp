@@ -50,3 +50,16 @@ void GLFWWindowImpl::Destroy()
 	glfwDestroyWindow(window);
 	glfwTerminate();
 }
+
+void GLFWWindowImpl::GetWindowHandle(HWND& hwnd)
+{
+	hwnd = glfwGetWin32Window(window);
+}
+
+VkSurfaceKHR GLFWWindowImpl::CreateVulkanWindowSurface(VkInstance instance)
+{
+	VkSurfaceKHR surface;
+	glfwCreateWindowSurface(instance, window, nullptr, &surface);
+
+	return surface;
+}

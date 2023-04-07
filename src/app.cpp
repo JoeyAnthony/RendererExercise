@@ -3,7 +3,11 @@
 void GraphicsApplication::Initialize()
 {
 	app_window = new GLFWWindowImpl();
-	graphics = new VulkanGraphics();
+
+	WindowData w_data{};
+	app_window->GetWindowHandle(w_data.hwnd);
+	w_data.hinstance = GetModuleHandle(nullptr);
+	graphics = new VulkanGraphics(w_data);
 }
 
 void GraphicsApplication::Edulcorate()

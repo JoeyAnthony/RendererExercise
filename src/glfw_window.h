@@ -1,30 +1,15 @@
 #pragma once
 #include <string>
 
-//#define GLFW_INCLUDE_VULKAN
+#define VK_USE_PLATFORM_WIN32_KHR
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 
-struct WindowConfig {
-	std::string window_name;
-	std::string window_text;
-	uint32_t width;
-	uint32_t height;
-	uint32_t pos_X;
-	uint32_t pos_y;
-	bool windowed;
+#include "bp_window.h"
 
-	WindowConfig() {
-		width = 1000;
-		height = 800;
-		pos_X = 0;
-		pos_y = 0;
-		windowed = true;
-		window_name = "Graphics Application";
-		window_text = "Graphics Application";
-	}
-};
-
-class GLFWWindowImpl {
+class GLFWWindowImpl: public BP_Window {
 private:
 	GLFWwindow* window = nullptr;
 	
@@ -37,4 +22,7 @@ public:
 	bool GetShouldClose();
 	void Initialize(const WindowConfig& config);
 	void Destroy();
+
+	void GetWindowHandle(HWND& hwnd);
+	VkSurfaceKHR CreateVulkanWindowSurface(VkInstance instance);
 };
