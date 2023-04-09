@@ -51,6 +51,14 @@ void GLFWWindowImpl::Destroy()
 	glfwTerminate();
 }
 
+void GLFWWindowImpl::GetWindowResolution(uint32_t& width, uint32_t& height)
+{
+	int w, h;
+	glfwGetFramebufferSize(window, &w, &h);
+	width = static_cast<uint32_t>(w);
+	height = static_cast<uint32_t>(h);
+}
+
 void GLFWWindowImpl::GetWindowHandle(HWND& hwnd)
 {
 	hwnd = glfwGetWin32Window(window);

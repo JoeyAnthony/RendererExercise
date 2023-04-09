@@ -36,6 +36,8 @@ struct WindowData {
 	HWND hwnd;
 	HINSTANCE hinstance;
 	VkSurfaceKHR vulkan_surface;
+	uint32_t window_width;  // In pixels
+	uint32_t window_height; // In pixels
 };
 
 class VulkanGraphics {
@@ -93,8 +95,14 @@ public:
 
 	SwapChainDetails QuerySwapchainSupport(VkPhysicalDevice device);
 
-	vkSurfaceFormarKHR
 
+	VkSurfaceFormatKHR GetPreferredSwapchainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& supported_formats);
+
+	VkPresentModeKHR GetPreferredSwapchainPresentMode(const std::vector<VkPresentModeKHR>& present_modes);
+
+	VkExtent2D GetPreferredSwapchainExtend(const WindowData& window_data, const VkSurfaceCapabilitiesKHR& capabilities);
+
+	void CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
 
 	VulkanGraphics(const WindowData& window_data);
 	~VulkanGraphics();

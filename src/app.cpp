@@ -7,6 +7,7 @@ void GraphicsApplication::Initialize()
 	WindowData w_data{};
 	app_window->GetWindowHandle(w_data.hwnd);
 	w_data.hinstance = GetModuleHandle(nullptr);
+	app_window->GetWindowResolution(w_data.window_width, w_data.window_height);
 	graphics = new VulkanGraphics(w_data);
 }
 

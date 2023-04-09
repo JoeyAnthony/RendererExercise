@@ -8,6 +8,7 @@
 #include <GLFW/glfw3native.h>
 
 #include "bp_window.h"
+#include <klein/klein.hpp>
 
 class GLFWWindowImpl: public BP_Window {
 private:
@@ -22,6 +23,7 @@ public:
 	bool GetShouldClose();
 	void Initialize(const WindowConfig& config);
 	void Destroy();
+	void GetWindowResolution(uint32_t& width, uint32_t& height);
 
 	void GetWindowHandle(HWND& hwnd);
 	VkSurfaceKHR CreateVulkanWindowSurface(VkInstance instance);
