@@ -3,8 +3,66 @@
 
 #include <map>
 #include <set>
+#include <string>
 
 #include "logger.h"
+
+VKAPI_ATTR VkBool32 VKAPI_CALL VulkanGraphics::DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+{
+	BP_LOG(LogSeverity::BP_DEBUG, LogColor::BLUE) << pCallbackData->pMessage;
+
+	// Returning true is only used wen testing the validation layers themselves
+	return VK_FALSE;
+}
+
+bool VulkanGraphics::AreExtensionsAvailable(const std::vector<const char*>& extensions) {
+	LOG << "Enumerate VULKAN extensions";
+	// Enumerate optional extensions, only checks glfw extensions
+	std::set <std::string> to_check(extensions.begin(), extensions.end());
+	uint32_t enumerated_extension_count = 0;
+	vkEnumerateInstanceExtensionProperties(nullptr, &enumerated_extension_count, nullptr);
+
+	if (enumerated_extension_count > 0) {
+		std::vector <VkExtensionProperties> enumerated_extensions(enumerated_extension_count);
+		vkEnumerateInstanceExtensionProperties(nullptr, &enumerated_extension_count, enumerated_extensions.data());
+
+		uint32_t extensions_count = extensions.size();
+		for (int j = 0; j < extensions_count; j++) {
+
+			bool extension_found = false;
+			for (int i = 0; i < enumerated_extension_count; i++) {
+
+				if (std::string(enumerated_extensions[i].extensionName).compare(extensions[j]) == 0) {
+					LOG << "FOUND\t" << enumerated_extensions[i].extensionName;
+					extension_found = true;
+					to_check.erase(enumerated_extensions[i].extensionName);
+					break;
+				}
+			}
+		}
+	}
+	else {
+		LOG << "ERROR\t Could not enumerate supported extensions";
+		return false;
+	}
+
+	uint32_t to_check_size = to_check.size();
+	if (to_check_size > 0) {
+		for (std::string ext : to_check) {
+			LOG << "UNSUPPORTED\t extension is not supported: " << ext;
+		}
+
+		return false;
+	}
+
+	//if (glfw_extensions_found == glfw_extension_count) {
+	//	LOG << "All GLFW extensions found. Found: " << glfw_extension_count;
+	//}
+	//else {
+	//	LOG << "Not all GLFW extensions found. Found: " << glfw_extension_count;
+	//}
+	return true;
+}
 
 bool VulkanGraphics::Initialize()
 {
@@ -23,64 +81,16 @@ bool VulkanGraphics::Initialize()
 	LOG; //insert new line
 	LOG << "Enable VULKAN extensions";
 	// All required extensions
-	std::vector<const char*> required_extensions;
-	required_extensions.reserve(20);
-
-	// Load required extensions from GLFW
-	uint32_t glfw_extension_count = 0;
-	const char** glfw_extensions;
-	glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
-	// Set extension count info for glfw only
-	if (glfw_extension_count > 0) {
-		create_info.enabledExtensionCount = glfw_extension_count;
-		create_info.ppEnabledExtensionNames = glfw_extensions;
-	}
-	for (int i = 0; i < glfw_extension_count; i++) {
-		required_extensions.push_back(glfw_extensions[i]);
-		LOG << "GLFW extension found: " << glfw_extensions[i];
-	}
-
-	// Add multiplatform extensions (MacOS)
-	//required_extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-	//create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	std::vector<const char*> required_extensions = GetRequiredInstanceExtensions();
 
 	// Set extension count info
 	create_info.enabledExtensionCount = required_extensions.size();
 	create_info.ppEnabledExtensionNames = required_extensions.data();
 
 	LOG; //insert new line
-	LOG << "Enumerate VULKAN extensions";
-	// Enumerate optional extensions, only checks glfw extensions
-	uint32_t extension_count = 0;
-	uint32_t glfw_extensions_found = 0;
-	vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
-	if (extension_count > 0) {
-		std::vector <VkExtensionProperties> extensions(extension_count);
-		vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data());
-
-		for (int i = 0; i < extension_count; i++) {
-			bool extension_found = false;
-
-			for (int j = 0; j < glfw_extension_count; j++) {
-				if (std::string(extensions[i].extensionName).compare(glfw_extensions[j]) == 0) {
-					LOG << extensions[i].extensionName << "\t\tFOUND";
-					extension_found = true;
-					glfw_extensions_found++;
-					break;
-				}
-			}
-
-			if (!extension_found) {
-				LOG << extensions[i].extensionName << "\t\tMISSING";
-			}
-		}
-	}
-
-	if (glfw_extensions_found == glfw_extension_count) {
-		LOG << "All GLFW extensions found. Found: " << glfw_extension_count;
-	}
-	else {
-		LOG << "Not all GLFW extensions found. Found: " << glfw_extension_count;
+	if (!AreExtensionsAvailable(required_extensions)) {
+		LOG << "FAILURE\t Required extensions missing";
+		return false;
 	}
 
 	// Set validation layers inside create_info struct
@@ -99,7 +109,7 @@ bool VulkanGraphics::Initialize()
 	}
 
 	LOG;
-	LOG << "VULKAN instance created\tSUCCESS";
+	LOG << "SUCCESS\t VULKAN instance created";
 	return true;
 }
 
@@ -119,7 +129,7 @@ bool VulkanGraphics::CheckValidationLayerSupport()
 		for (int available_index = 0; available_index < available_count; available_index++) {
 			// Check if layer name exists
 			if (std::string(validation_layers_[validation_index]).compare(available_layers[available_index].layerName)) {
-				LOG << validation_layers_[validation_index] << "\tFOUND";
+				LOG << "FOUND\t " << validation_layers_[validation_index];
 				layer_found = true;
 				found_layer_count++;
 			}
@@ -168,7 +178,12 @@ void VulkanGraphics::SetValidationLayers(VkInstanceCreateInfo &create_info)
 
 void VulkanGraphics::Edulcorate()
 {
-	vkDestroySurfaceKHR(instance_, vulkan_surface_, nullptr);
+	if (swapchain_) {
+		vkDestroySwapchainKHR(vulkan_device_, swapchain_, nullptr);
+	}
+	if (vulkan_surface_) {
+		vkDestroySurfaceKHR(instance_, vulkan_surface_, nullptr);
+	}
 	vkDestroyDevice(vulkan_device_, nullptr);
 	vkDestroyInstance(instance_, nullptr);
 }
@@ -182,11 +197,29 @@ void VulkanGraphics::CreateVulkanSurface(const WindowData& window_data)
 
 	VkResult res = vkCreateWin32SurfaceKHR(instance_, &surface_create_info, nullptr, &vulkan_surface_);
 	if (res == VK_SUCCESS) {
-		LOG << "Create Vulkan surface\tSUCCESS";
+		LOG << "SUCCESS\t Create Vulkan surface";
 	}
 	else {
-		LOG << "Create Vulkan surface failed with error: " << res << "\tFAILURE";
+		LOG << "FAILURE\t Create Vulkan surface failed with error: " << res;
 	}
+}
+
+std::vector<const char*> VulkanGraphics::GetRequiredInstanceExtensions()
+{
+	uint32_t glfw_extension_count = 0;
+	const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+
+	// Add debug messages when validation layers are enabled
+	std::vector<const char*> extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
+	if (enable_validation_layers_) {
+		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	}
+
+	// Add multiplatform extensions (MacOS)
+	//required_extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+	//create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+
+	return extensions;
 }
 
 void VulkanGraphics::PopulateDebugMessengerCreateInfoStruct(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
@@ -231,14 +264,14 @@ void VulkanGraphics::SelectPhysicalDevice()
 		}
 
 		device_scores.insert({ score, device });
-		LOG << "Physical device"  << device_properties.deviceName << " score: " << score << "\tFOUND";
+		LOG << "FOUND\t Physical device "  << device_properties.deviceName << " score: " << score;
 	}
 
 	selected_device_ = device_scores.begin()->second;
 
 	VkPhysicalDeviceProperties device_properties;
 	vkGetPhysicalDeviceProperties(selected_device_, &device_properties);
-	LOG << "Physical device" << device_properties.deviceName << "\tSELECTED";
+	LOG << "SELECTED\t Physical device" << device_properties.deviceName;
 }
 
 QueueFamilyIndices VulkanGraphics::FindQueueFamilies(VkPhysicalDevice device)
@@ -313,7 +346,7 @@ bool VulkanGraphics::IsDeviceSuitable(VkPhysicalDevice device)
 
 	bool success = queues_found && extensions_supported && swapchain_adequate;
 	if (!success) {
-		LOG << "Device is not suitable \tFAILURE";
+		LOG << "FAILURE\t Device is not suitable";
 	}
 
 	return success;
@@ -368,7 +401,7 @@ void VulkanGraphics::CreateLogicalDevice()
 	// Create Vulkan device that can be used to process data
 	VkResult res = vkCreateDevice(selected_device_, &device_create_info, nullptr, &vulkan_device_);
 	if (res == VK_SUCCESS) {
-		LOG << "Create Vulkan device\tSUCCESS";
+		LOG << "SUCCESS\t Create Vulkan device";
 	}
 	else {
 		LOG << "Create Vulkan device FAILED with error: " << res;
@@ -421,15 +454,16 @@ VkSurfaceFormatKHR VulkanGraphics::GetPreferredSwapchainSurfaceFormat(const std:
 	bool format_set = false;
 	VkSurfaceFormatKHR preferred_format;
 	for (const VkSurfaceFormatKHR& format : supported_formats) {
-		if (format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && format.format == VK_FORMAT_R8G8B8A8_SRGB) {
+		if ((format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) && (format.format == VK_FORMAT_B8G8R8A8_SRGB)) {
 			preferred_format = format;
 			format_set = true;
+			break;
 		}
 	}
 
 	if (!format_set) {
 		preferred_format = supported_formats[0];
-		LOG << "Preferred swapcahin format not found t\FAILURE";
+		LOG << "FAILURE\t Preferred swapcahin format not found";
 	}
 
 	return preferred_format;
@@ -444,6 +478,35 @@ VkPresentModeKHR VulkanGraphics::GetPreferredSwapchainPresentMode(const std::vec
 			break;
 		}
 	}
+
+	switch (preferred_mode)
+	{
+	case VK_PRESENT_MODE_IMMEDIATE_KHR:
+		LOG << "Swapchain presentmode set: VK_PRESENT_MODE_IMMEDIATE_KHR";
+		break;
+	case VK_PRESENT_MODE_MAILBOX_KHR:
+		LOG << "Swapchain presentmode set: VK_PRESENT_MODE_MAILBOX_KHR";
+		break;
+	case VK_PRESENT_MODE_FIFO_KHR:
+		LOG << "Swapchain presentmode set: VK_PRESENT_MODE_FIFO_KHR";
+		break;
+	case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+		LOG << "Swapchain presentmode set: VK_PRESENT_MODE_FIFO_RELAXED_KHR";
+		break;
+	case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
+		LOG << "Swapchain presentmode set: VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR";
+		break;
+	case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
+		LOG << "Swapchain presentmode set: VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR";
+		break;
+	case VK_PRESENT_MODE_MAX_ENUM_KHR:
+		LOG << "Swapchain presentmode set: VK_PRESENT_MODE_MAX_ENUM_KHR";
+		break;
+	default:
+		LOG << "Swapchain presentmode set: NONE";
+		break;
+	}
+
 	return preferred_mode;
 }
 
@@ -465,7 +528,7 @@ VkExtent2D VulkanGraphics::GetPreferredSwapchainExtend(const WindowData& window_
 	return swapchain_extends;
 }
 
-void VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device)
+bool VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device)
 {
 	SwapChainDetails sw_detail = QuerySwapchainSupport(device);
 	VkSurfaceFormatKHR sw_format = GetPreferredSwapchainSurfaceFormat(sw_detail.formats);
@@ -484,7 +547,6 @@ void VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 	sw_create_info.surface = vulkan_surface_;
 	sw_create_info.minImageCount = sw_image_count;
 	sw_create_info.imageFormat = sw_format.format;
-	sw_create_info.presentMode = sw_present_mode;
 	sw_create_info.imageExtent = sw_extend;
 	
 	// Specifies the image array per frame. This can be used for 3d but also for shadow maps or other image collections.
@@ -498,8 +560,11 @@ void VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 	*/
 	sw_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
+	// Choose whether there are only one or multiple queue families being used
+	// For sake of the tutorial we will use concurrent mode
 	QueueFamilyIndices indices = FindQueueFamilies(device);
 	uint32_t queue_family_array[] = { indices.graphics_index.value(), indices.present_index.value() };
+	// If the queue family indices between the queue families are not the same, the functionality is being shared
 	if (indices.graphics_index != indices.present_index) {
 		sw_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
 		sw_create_info.queueFamilyIndexCount = 2;
@@ -511,7 +576,22 @@ void VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 		sw_create_info.pQueueFamilyIndices = nullptr; // Optional
 	}
 
+	sw_create_info.preTransform = sw_detail.capabilities.currentTransform;
+	sw_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
+	sw_create_info.presentMode = sw_present_mode;
+	sw_create_info.clipped = VK_TRUE;
+	sw_create_info.oldSwapchain = VK_NULL_HANDLE;
+
+	VkResult res = vkCreateSwapchainKHR(vulkan_device_, &sw_create_info, nullptr, &swapchain_);
+	if (res == VK_SUCCESS) {
+		LOG << "SUCCESS\t Create swapchain";
+		return true;
+	}
+	else {
+		LOG << "FAILURE\t Create swapchain failed with error: " << res;
+		return false;
+	}
 }
 
 VulkanGraphics::VulkanGraphics(const WindowData& window_data)
@@ -540,6 +620,7 @@ VulkanGraphics::VulkanGraphics(const WindowData& window_data)
 	CreateVulkanSurface(window_data);
 	SelectPhysicalDevice();
 	CreateLogicalDevice();
+	CreateSwapchain(window_data, selected_device_);
 }
 
 VulkanGraphics::~VulkanGraphics()

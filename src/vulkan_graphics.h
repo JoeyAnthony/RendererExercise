@@ -16,7 +16,7 @@ struct QueueFamilyIndices {
 
 	bool IsComplete() {
 		bool success = graphics_index.has_value();
-		success *= present_index.has_value();
+		success &= present_index.has_value();
 		return success;
 	}
 };
@@ -53,6 +53,8 @@ class VulkanGraphics {
 	// Required device extensions
 	const std::vector<const char*> required_device_extensions_ = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
+	VkSwapchainKHR swapchain_;
+
 private:
 	bool Initialize();
 	void SetValidationLayers(VkInstanceCreateInfo& create_info);
@@ -70,6 +72,12 @@ public:
 	bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
 	void Edulcorate();
 	void CreateVulkanSurface(const WindowData& window_data);
+
+	bool AreExtensionsAvailable(const std::vector<const char*>& extensions);
+
+	// Messaging
+	std::vector<const char*> GetRequiredInstanceExtensions();
+	// ~Messaging
 
 	/*
 	* Enumerate all Queue Families to check if the physical device supports the required queue types
@@ -102,7 +110,7 @@ public:
 
 	VkExtent2D GetPreferredSwapchainExtend(const WindowData& window_data, const VkSurfaceCapabilitiesKHR& capabilities);
 
-	void CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
+	bool CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
 
 	VulkanGraphics(const WindowData& window_data);
 	~VulkanGraphics();

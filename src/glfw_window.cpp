@@ -38,11 +38,6 @@ void GLFWWindowImpl::Initialize(const WindowConfig& config)
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	(GLFW_CLIENT_API, GLFW_NO_API);
 	window = glfwCreateWindow(config.width, config.height, "Vulkan", nullptr, nullptr);
-
-	//uint32_t extension_count = 0;
-	//vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
-
-	//LOG << extension_count << " extensions supported";
 }
 
 void GLFWWindowImpl::Destroy()
