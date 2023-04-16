@@ -7,9 +7,9 @@
 
 #include "logger.h"
 
-VKAPI_ATTR VkBool32 VKAPI_CALL VulkanGraphics::DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
 {
-	BP_LOG(LogSeverity::BP_DEBUG, LogColor::BLUE) << pCallbackData->pMessage;
+	BP_LOG(LogSeverity::BP_DEBUG, LogColor::PURPLE) << pCallbackData->pMessage;
 
 	// Returning true is only used wen testing the validation layers themselves
 	return VK_FALSE;
@@ -220,6 +220,20 @@ std::vector<const char*> VulkanGraphics::GetRequiredInstanceExtensions()
 	//create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 
 	return extensions;
+}
+
+void VulkanGraphics::EnableVulkanDebugMessages()
+{
+	if (!enable_validation_layers_) {
+		return;
+	}
+
+	VkDebugUtilsMessengerCreateInfoEXT message_create{};
+	message_create.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	message_create.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	message_create.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	message_create.pfnUserCallback = DebugCallback;
+	message_create.pUserData = nullptr;
 }
 
 void VulkanGraphics::PopulateDebugMessengerCreateInfoStruct(VkDebugUtilsMessengerCreateInfoEXT& createInfo)

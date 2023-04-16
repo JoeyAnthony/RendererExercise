@@ -40,6 +40,12 @@ struct WindowData {
 	uint32_t window_height; // In pixels
 };
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	VkDebugUtilsMessageTypeFlagsEXT messageType,
+	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+	void* pUserData);
+
 class VulkanGraphics {
 	VkInstance instance_;
 	VkSurfaceKHR vulkan_surface_;
@@ -69,12 +75,9 @@ private:
 
 public:
 	// Messaging
-	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
-		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-		VkDebugUtilsMessageTypeFlagsEXT messageType,
-		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-		void* pUserData);
+
 	std::vector<const char*> GetRequiredInstanceExtensions();
+	void EnableVulkanDebugMessages();
 	// ~Messaging
 
 	bool CheckValidationLayerSupport();
