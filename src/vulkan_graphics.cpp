@@ -234,6 +234,8 @@ void VulkanGraphics::EnableVulkanDebugMessages()
 	message_create.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	message_create.pfnUserCallback = DebugCallback;
 	message_create.pUserData = nullptr;
+
+	vkCreateDebugUtilsMessengerEXT(instance_, &message_create, nullptr)
 }
 
 void VulkanGraphics::PopulateDebugMessengerCreateInfoStruct(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
