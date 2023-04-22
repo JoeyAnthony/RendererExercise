@@ -40,14 +40,48 @@ struct WindowData {
 	uint32_t window_height; // In pixels
 };
 
+struct BP_SwapchainInfo {
+	VkSwapchainKHR swapchain;
+	VkFormat format;
+	VkExtent2D extent;
+	std::vector<VkImage> images;
+	std::vector<VkImageView> image_views;
+};
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageType,
 	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
 	void* pUserData);
 
+/*
+* This function retreives the function pointer for vkCreateDebugUtilsMessengerEXT and calls it with the paramaters passed to this function.
+* Because the create function only has to be called once, DebugCallback can be used freely afterwards.
+*/
+static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
+	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+	if (func != nullptr) {
+		return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+	}
+	else {
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
+	}
+}
+
+/*
+* This function retreives the function pointer for vkDestroyDebugUtilsMessengerEXT and calls it with the paramaters passed to this function.
+* DebugCallback cannot be used anymore after this function was called.
+*/
+static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks* pAllocator) {
+	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	if (func != nullptr) {
+		func(instance, debug_messenger, pAllocator);
+	}
+}
+
 class VulkanGraphics {
 	VkInstance instance_;
+	VkDebugUtilsMessengerEXT debug_messenger_;
 	VkSurfaceKHR vulkan_surface_;
 	VkPhysicalDevice selected_device_ = VK_NULL_HANDLE;
 	VkDevice vulkan_device_;
@@ -59,7 +93,8 @@ class VulkanGraphics {
 	// Required device extensions
 	const std::vector<const char*> required_device_extensions_ = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
-	VkSwapchainKHR swapchain_;
+	BP_SwapchainInfo swapchain_data_;
+
 
 private:
 	bool Initialize();
@@ -120,6 +155,10 @@ public:
 	VkExtent2D GetPreferredSwapchainExtend(const WindowData& window_data, const VkSurfaceCapabilitiesKHR& capabilities);
 
 	bool CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
+
+	bool CreateImageViews();
+
+	void CreateGraphicsPipeline();
 
 	VulkanGraphics(const WindowData& window_data);
 	~VulkanGraphics();

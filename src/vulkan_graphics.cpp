@@ -6,6 +6,7 @@
 #include <string>
 
 #include "logger.h"
+#include "vulkan_shader.h"
 
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
 {
@@ -74,9 +75,16 @@ bool VulkanGraphics::Initialize()
 	app_info.engineVersion = VK_MAKE_VERSION(0, 0, 1);
 	app_info.apiVersion = VK_API_VERSION_1_3;
 
+	// Create debug messaging struct
+	VkDebugUtilsMessengerCreateInfoEXT debug_create_info{};
+	PopulateDebugMessengerCreateInfoStruct(debug_create_info);
+
 	VkInstanceCreateInfo create_info{};
 	create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	create_info.pApplicationInfo = &app_info;
+
+	// Set debug create info struct
+	create_info.pNext = &debug_create_info;
 
 	LOG; //insert new line
 	LOG << "Enable VULKAN extensions";
@@ -178,12 +186,18 @@ void VulkanGraphics::SetValidationLayers(VkInstanceCreateInfo &create_info)
 
 void VulkanGraphics::Edulcorate()
 {
-	if (swapchain_) {
-		vkDestroySwapchainKHR(vulkan_device_, swapchain_, nullptr);
+	if (swapchain_data_.swapchain) {
+		vkDestroySwapchainKHR(vulkan_device_, swapchain_data_.swapchain, nullptr);
 	}
 	if (vulkan_surface_) {
 		vkDestroySurfaceKHR(instance_, vulkan_surface_, nullptr);
 	}
+
+	for (auto image_view : swapchain_data_.image_views) {
+		vkDestroyImageView(vulkan_device_, image_view, nullptr);
+	}
+
+	DestroyDebugUtilsMessengerEXT(instance_, debug_messenger_, nullptr);
 	vkDestroyDevice(vulkan_device_, nullptr);
 	vkDestroyInstance(instance_, nullptr);
 }
@@ -229,28 +243,24 @@ void VulkanGraphics::EnableVulkanDebugMessages()
 	}
 
 	VkDebugUtilsMessengerCreateInfoEXT message_create{};
-	message_create.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	message_create.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-	message_create.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-	message_create.pfnUserCallback = DebugCallback;
-	message_create.pUserData = nullptr;
+	PopulateDebugMessengerCreateInfoStruct(message_create);
 
-	vkCreateDebugUtilsMessengerEXT(instance_, &message_create, nullptr)
+	if (CreateDebugUtilsMessengerEXT(instance_, &message_create, nullptr, &debug_messenger_) == VK_SUCCESS)
+	{
+		LOG << "SUCCESS\t Enabled Vulkan debug messaging";
+	}
+	else {
+		LOG_S(LogSeverity::BP_ERROR) << "FAILURE\t Failed to enable Vulkan debug messaging";
+	}
 }
 
 void VulkanGraphics::PopulateDebugMessengerCreateInfoStruct(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
 {
-	createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	
-	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
-		| VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
-		| VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-	
-	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
-		| VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
-		| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
-		| VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT;
+	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	createInfo.pfnUserCallback = DebugCallback;
+	createInfo.pUserData = nullptr;
 
 	//createInfo.pfnUserCallback;
 }
@@ -599,7 +609,7 @@ bool VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 	sw_create_info.clipped = VK_TRUE;
 	sw_create_info.oldSwapchain = VK_NULL_HANDLE;
 
-	VkResult res = vkCreateSwapchainKHR(vulkan_device_, &sw_create_info, nullptr, &swapchain_);
+	VkResult res = vkCreateSwapchainKHR(vulkan_device_, &sw_create_info, nullptr, &swapchain_data_.swapchain);
 	if (res == VK_SUCCESS) {
 		LOG << "SUCCESS\t Create swapchain";
 		return true;
@@ -608,6 +618,109 @@ bool VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 		LOG << "FAILURE\t Create swapchain failed with error: " << res;
 		return false;
 	}
+
+	// Store swapchain image data
+	swapchain_data_.format = sw_format.format;
+	swapchain_data_.extent = sw_extend;
+	// Get swapchain images
+	uint32_t created_image_count = 0;
+	vkGetSwapchainImagesKHR(vulkan_device_, swapchain_data_.swapchain, &created_image_count, nullptr);
+
+	swapchain_data_.images.resize(created_image_count);
+	vkGetSwapchainImagesKHR(vulkan_device_, swapchain_data_.swapchain, &created_image_count, swapchain_data_.images.data());
+}
+
+bool VulkanGraphics::CreateImageViews()
+{
+	// For 3D and multiple swapchain image layers, view would have to be created for each layer as well
+	uint32_t count = swapchain_data_.images.size();
+	swapchain_data_.image_views.resize(count);
+	uint32_t success = 0;
+	for (int i = 0; i < count; i++) {
+		VkImageViewCreateInfo create_info{};
+		create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		create_info.image = swapchain_data_.images[i];
+		create_info.format = swapchain_data_.format;
+		create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+		create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+		create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		create_info.subresourceRange.baseArrayLayer = 0;
+		create_info.subresourceRange.baseMipLevel = 0;
+		create_info.subresourceRange.layerCount = 1;
+		create_info.subresourceRange.levelCount = 1;
+		
+		if (vkCreateImageView(vulkan_device_, &create_info, nullptr, &swapchain_data_.image_views[i]) == VK_SUCCESS) {
+			success++;
+		}
+		else {
+			LOG << "FAILURE\t Failed creatim image view";
+		}
+	}
+
+	return success == count;
+}
+
+void VulkanGraphics::CreateGraphicsPipeline()
+{
+	// Load shaders
+	VulkanShaderLoader shader_loader;
+	VkShaderModule vertex_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader(".\\triangle.vert"), vulkan_device_, nullptr);
+	VkShaderModule fragment_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader(".\\triangle.frag"), vulkan_device_, nullptr);
+	
+	// Initialize shader stages
+	VkPipelineShaderStageCreateInfo vertex_pipeline{};
+	vertex_pipeline.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertex_pipeline.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertex_pipeline.module = vertex_shader;
+	vertex_pipeline.pName = "main";
+
+	VkPipelineShaderStageCreateInfo fragment_pipeline{};
+	fragment_pipeline.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragment_pipeline.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragment_pipeline.module = fragment_shader;
+	fragment_pipeline.pName = "main";
+
+	VkPipelineShaderStageCreateInfo* shader_stages[]{ &vertex_pipeline, &fragment_pipeline };
+
+	// Create Vertex input pipeline state
+	// Set to nothing because we defined vertices in the shader for now
+	VkPipelineVertexInputStateCreateInfo vertex_input_pipeline_state{};
+	vertex_input_pipeline_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertex_input_pipeline_state.pVertexBindingDescriptions = nullptr;
+	vertex_input_pipeline_state.pVertexAttributeDescriptions = nullptr;
+	vertex_input_pipeline_state.vertexBindingDescriptionCount = 0;
+	vertex_input_pipeline_state.vertexAttributeDescriptionCount = 0;
+
+	// Add dynamic states to the pipeline
+	// Viewport and scissor allow changing these settings at render time
+	uint32_t dynamic_state_count = 2;
+	VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+
+	VkPipelineDynamicStateCreateInfo dynamic_pipeline_state{};
+	dynamic_pipeline_state.sType - VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamic_pipeline_state.pDynamicStates = &dynamic_states[0];
+	dynamic_pipeline_state.dynamicStateCount = dynamic_state_count;
+
+	VkPipelineInputAssemblyStateCreateInfo input_assembly_state{};
+	input_assembly_state.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	input_assembly_state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	input_assembly_state.primitiveRestartEnable = VK_FALSE;
+
+	// Define the viewport
+	VkViewport viewport{};
+	viewport.x = 0;
+	viewport.y = 0;
+	viewport.width = swapchain_data_.extent.width;
+	viewport.height = swapchain_data_.extent.height;
+
+
+
+	shader_loader.DestroyCreatedShaderModules(vulkan_device_, nullptr);
 }
 
 VulkanGraphics::VulkanGraphics(const WindowData& window_data)
@@ -631,12 +744,15 @@ VulkanGraphics::VulkanGraphics(const WindowData& window_data)
 
 	// Initialize vulkan
 	Initialize();
+	EnableVulkanDebugMessages();
 
 	LOG;
 	CreateVulkanSurface(window_data);
 	SelectPhysicalDevice();
 	CreateLogicalDevice();
 	CreateSwapchain(window_data, selected_device_);
+	CreateImageViews();
+	CreateGraphicsPipeline();
 }
 
 VulkanGraphics::~VulkanGraphics()
