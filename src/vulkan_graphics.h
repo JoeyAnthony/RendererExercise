@@ -88,10 +88,14 @@ class VulkanGraphics {
 	bool enable_validation_layers_ = false;
 	DeviceQueues device_queues_;
 
+	VkRenderPass render_pass_;
+	VkPipelineLayout pipeline_layout_;
+	VkPipeline pipeline_;
+
 	// Validation layers used in this application
-	const std::vector<const char*> validation_layers_ = { "VK_LAYER_KHRONOS_validation" };
+	const std::vector<const char*> validation_layers_ = { "VK_LAYER_KHRONOS_validation"/*, "VK_LAYER_LUNARG_api_dump"*/};
 	// Required device extensions
-	const std::vector<const char*> required_device_extensions_ = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+	const std::vector<const char*> required_device_extensions_ = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME, "VK_KHR_external_memory_win32", VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME, "VK_KHR_external_semaphore_win32", VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME };
 
 	BP_SwapchainInfo swapchain_data_;
 
@@ -157,6 +161,8 @@ public:
 	bool CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
 
 	bool CreateImageViews();
+
+	void CreateRenderPass();
 
 	void CreateGraphicsPipeline();
 

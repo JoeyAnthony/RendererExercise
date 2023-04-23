@@ -8,7 +8,6 @@
 
 
 class VulkanShaderLoader {
-	std::vector<char> bytes;
 	VkShaderModuleCreateInfo create_info;
 	std::vector<VkShaderModule> shader_modules;
 
