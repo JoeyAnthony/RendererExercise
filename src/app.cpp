@@ -21,7 +21,13 @@ void GraphicsApplication::Run()
 {
 	while (app_window->GetShouldClose() == false) {
 		app_window->UpdateWindow();
+
+		RenderFrame();
 	}
+}
+
+void GraphicsApplication::RenderFrame()
+{
 }
 
 GraphicsApplication::GraphicsApplication() : shouldRun(true)

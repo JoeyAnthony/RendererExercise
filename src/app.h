@@ -14,6 +14,7 @@ public:
 	void Initialize();
 	void Edulcorate();
 	void Run();
+	void RenderFrame();
 
 	GraphicsApplication();
 	~GraphicsApplication();

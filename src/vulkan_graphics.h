@@ -46,6 +46,7 @@ struct BP_SwapchainInfo {
 	VkExtent2D extent;
 	std::vector<VkImage> images;
 	std::vector<VkImageView> image_views;
+	std::vector<VkFramebuffer> framebuffers;
 };
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
@@ -98,7 +99,12 @@ class VulkanGraphics {
 	const std::vector<const char*> required_device_extensions_ = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME, "VK_KHR_external_memory_win32", VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME, "VK_KHR_external_semaphore_win32", VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME };
 
 	BP_SwapchainInfo swapchain_data_;
+	VkCommandPool command_pool;
+	VkCommandBuffer command_buffer;
 
+	VkSemaphore sem_image_available;
+	VkSemaphore sem_render_finished;
+	VkFence fence_in_flight;
 
 private:
 	bool Initialize();
@@ -165,6 +171,19 @@ public:
 	void CreateRenderPass();
 
 	void CreateGraphicsPipeline();
+
+	void CreateFrambuffers();
+
+	void CreateCommandPool();
+
+	void CreateCommandBuffer();
+
+	void RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint32_t img_index);
+
+	void CreateSyncObjects();
+
+
+	void RenderFrame();
 
 	VulkanGraphics(const WindowData& window_data);
 	~VulkanGraphics();
