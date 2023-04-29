@@ -212,6 +212,8 @@ void VulkanGraphics::Edulcorate()
 	DestroyDebugUtilsMessengerEXT(instance_, debug_messenger_, nullptr);
 	vkDestroyDevice(vulkan_device_, nullptr);
 	vkDestroyInstance(instance_, nullptr);
+
+	//vkDeviceWaitIdle(vulkan_device_);
 }
 
 void VulkanGraphics::CreateVulkanSurface(const WindowData& window_data)
@@ -621,19 +623,19 @@ bool VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 	sw_create_info.clipped = VK_TRUE;
 	sw_create_info.oldSwapchain = VK_NULL_HANDLE;
 
-	// Store swapchain image data
-	swapchain_data_.format = sw_format.format;
-	swapchain_data_.extent = sw_extend;
-
 	VkResult res = vkCreateSwapchainKHR(vulkan_device_, &sw_create_info, nullptr, &swapchain_data_.swapchain);
 	if (res == VK_SUCCESS) {
 		LOG << "SUCCESS\t Create swapchain";
-		return true;
 	}
 	else {
 		LOG << "FAILURE\t Create swapchain failed with error: " << res;
 		return false;
 	}
+
+
+	// Store swapchain image data
+	swapchain_data_.format = sw_format.format;
+	swapchain_data_.extent = sw_extend;
 
 	// Get swapchain images
 	uint32_t created_image_count = 0;
@@ -641,6 +643,8 @@ bool VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 
 	swapchain_data_.images.resize(created_image_count);
 	vkGetSwapchainImagesKHR(vulkan_device_, swapchain_data_.swapchain, &created_image_count, swapchain_data_.images.data());
+
+	return true;
 }
 
 bool VulkanGraphics::CreateImageViews()
@@ -921,6 +925,7 @@ void VulkanGraphics::CreateFrambuffers()
 		framebuffer_info.pAttachments = &swapchain_data_.image_views[i];
 		framebuffer_info.attachmentCount = 1;
 		framebuffer_info.renderPass = render_pass_;
+		framebuffer_info.layers = 1;
 
 		VkResult res = vkCreateFramebuffer(vulkan_device_, &framebuffer_info, nullptr, &swapchain_data_.framebuffers[i]);
 		if (res == VK_SUCCESS) {
@@ -956,7 +961,7 @@ void VulkanGraphics::CreateCommandBuffer()
 	allocate_info.commandPool = command_pool;
 	allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocate_info.commandBufferCount = 1;
-	VkResult res = vkAllocateCommandBuffers(vulkan_device_, &allocate_info, nullptr);
+	VkResult res = vkAllocateCommandBuffers(vulkan_device_, &allocate_info, &command_buffer);
 	if (res != VK_SUCCESS) {
 		LOG << "SUCCESS\t Couldn't create command buffer";
 	}
@@ -983,7 +988,7 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
 	begin_pass_info.renderArea.extent = swapchain_data_.extent;
 
 	// Set clear color
-	VkClearValue clear_color = { {{0.1f, 0.5f, 0.5f, 1.0f}} };
+	VkClearValue clear_color = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
 	begin_pass_info.clearValueCount = 1;
 	begin_pass_info.pClearValues = &clear_color;
 
@@ -1008,7 +1013,7 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
 	vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);
 
 	// Draw
-	vkCmdDraw(cmd_buffer, 1, 1, 0, 0);
+	vkCmdDraw(cmd_buffer, 3, 1, 0, 0);
 
 	// End render pass
 	vkCmdEndRenderPass(cmd_buffer);
@@ -1087,8 +1092,9 @@ void VulkanGraphics::RenderFrame()
 	
 	VkSwapchainKHR swapchains[] = {swapchain_data_.swapchain};
 	present_info.swapchainCount = 1;
-	present_info.pSwapchains = swapchains;
+	present_info.pSwapchains = &swapchains[0];
 	present_info.pResults = nullptr;
+	present_info.pImageIndices = &image_index;
 
 	vkQueuePresentKHR(device_queues_.present_queue, &present_info);
 }
@@ -1127,6 +1133,7 @@ VulkanGraphics::VulkanGraphics(const WindowData& window_data)
 	CreateFrambuffers();
 	CreateCommandPool();
 	CreateCommandBuffer();
+	CreateSyncObjects();
 }
 
 VulkanGraphics::~VulkanGraphics()

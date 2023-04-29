@@ -9,6 +9,8 @@
 
 #include "bp_window.h"
 
+const unsigned short MAX_FRAMES_IN_FLIGHT = 2;
+
 // Specifies queue support for a queue family
 struct QueueFamilyIndices {
 	std::optional<uint32_t> graphics_index;
@@ -156,7 +158,6 @@ public:
 	void SetVulkanSurface(const VkSurfaceKHR& surface);
 
 	SwapChainDetails QuerySwapchainSupport(VkPhysicalDevice device);
-
 
 	VkSurfaceFormatKHR GetPreferredSwapchainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& supported_formats);
 

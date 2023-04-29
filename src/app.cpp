@@ -28,6 +28,7 @@ void GraphicsApplication::Run()
 
 void GraphicsApplication::RenderFrame()
 {
+	graphics->RenderFrame();
 }
 
 GraphicsApplication::GraphicsApplication() : shouldRun(true)
