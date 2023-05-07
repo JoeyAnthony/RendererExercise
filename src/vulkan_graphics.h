@@ -34,14 +34,6 @@ struct DeviceQueues {
 	VkQueue present_queue;
 };
 
-struct WindowData {
-	HWND hwnd;
-	HINSTANCE hinstance;
-	VkSurfaceKHR vulkan_surface;
-	uint32_t window_width;  // In pixels
-	uint32_t window_height; // In pixels
-};
-
 struct BP_SwapchainInfo {
 	VkSwapchainKHR swapchain;
 	VkFormat format;
@@ -83,6 +75,7 @@ static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMesse
 }
 
 class VulkanGraphics {
+	BP_Window* app_window;
 	VkInstance instance_;
 	VkDebugUtilsMessengerEXT debug_messenger_;
 	VkSurfaceKHR vulkan_surface_;
@@ -102,11 +95,13 @@ class VulkanGraphics {
 
 	BP_SwapchainInfo swapchain_data_;
 	VkCommandPool command_pool;
-	VkCommandBuffer command_buffer;
 
-	VkSemaphore sem_image_available;
-	VkSemaphore sem_render_finished;
-	VkFence fence_in_flight;
+	// Per in-flight frames
+	uint32_t current_frame = 0;
+	std::vector<VkCommandBuffer> command_buffers;
+	std::vector<VkSemaphore> sem_image_available;
+	std::vector<VkSemaphore> sem_render_finished;
+	std::vector<VkFence> fence_in_flight;
 
 private:
 	bool Initialize();
@@ -129,6 +124,7 @@ public:
 
 	bool CheckValidationLayerSupport();
 	bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
+	void DestroySwapchain();
 	void Edulcorate();
 	void CreateVulkanSurface(const WindowData& window_data);
 
@@ -186,6 +182,8 @@ public:
 
 	void RenderFrame();
 
-	VulkanGraphics(const WindowData& window_data);
+	void RecreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
+
+	VulkanGraphics(BP_Window* window);
 	~VulkanGraphics();
 };

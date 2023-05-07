@@ -1,6 +1,10 @@
 #pragma once
 #include <string>
-//#include <Windows.h>
+#include <vulkan/vulkan.hpp>
+
+#ifdef WIN32
+#include <Windows.h>
+#endif // WIN32
 
 //struct WindowConfig {
 //	std::string window_name;
@@ -42,6 +46,27 @@ struct WindowConfig {
 	}
 };
 
-class BP_Window {
-
+struct WindowData {
+	HWND hwnd;
+	HINSTANCE hinstance;
+	VkSurfaceKHR vulkan_surface;
+	uint32_t window_width;  // In pixels
+	uint32_t window_height; // In pixels
 };
+
+class BP_Window {
+public:
+	virtual void UpdateWindow() = 0;
+	virtual bool GetShouldClose() = 0;
+	virtual void Initialize(const WindowConfig& config) = 0;
+	virtual void Destroy() = 0;
+	virtual void GetWindowResolution(uint32_t& width, uint32_t& height) = 0;
+	virtual VkSurfaceKHR CreateVulkanWindowSurface(VkInstance instance) = 0;
+	virtual WindowData GetWindowData() = 0;
+};
+
+#ifdef WIN32
+class BP_Win_Window : public BP_Window {
+	virtual void GetWindowHandle(HWND& hwnd) = 0;
+};
+#endif // WIN32

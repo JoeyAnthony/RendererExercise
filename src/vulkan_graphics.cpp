@@ -178,6 +178,21 @@ bool VulkanGraphics::CheckDeviceExtensionSupport(VkPhysicalDevice device)
 	return unique_required_device_extensions.empty();
 }
 
+void VulkanGraphics::DestroySwapchain()
+{
+	if (swapchain_data_.swapchain) {
+		vkDestroySwapchainKHR(vulkan_device_, swapchain_data_.swapchain, nullptr);
+	}
+
+	for (auto image_view : swapchain_data_.image_views) {
+		vkDestroyImageView(vulkan_device_, image_view, nullptr);
+	}
+
+	for (auto framebuffer : swapchain_data_.framebuffers) {
+		vkDestroyFramebuffer(vulkan_device_, framebuffer, nullptr);
+	}
+}
+
 void VulkanGraphics::SetValidationLayers(VkInstanceCreateInfo &create_info)
 {
 	//Enable validation Layers
@@ -188,24 +203,18 @@ void VulkanGraphics::SetValidationLayers(VkInstanceCreateInfo &create_info)
 
 void VulkanGraphics::Edulcorate()
 {
-	if (swapchain_data_.swapchain) {
-		vkDestroySwapchainKHR(vulkan_device_, swapchain_data_.swapchain, nullptr);
-	}
+	DestroySwapchain();
+
 	if (vulkan_surface_) {
 		vkDestroySurfaceKHR(instance_, vulkan_surface_, nullptr);
 	}
 
-	for (auto image_view : swapchain_data_.image_views) {
-		vkDestroyImageView(vulkan_device_, image_view, nullptr);
+	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		vkDestroyFence(vulkan_device_, fence_in_flight[i], nullptr);
+		vkDestroySemaphore(vulkan_device_, sem_image_available[i], nullptr);
+		vkDestroySemaphore(vulkan_device_, sem_render_finished[i], nullptr);
 	}
 
-	for (auto framebuffer : swapchain_data_.framebuffers) {
-		vkDestroyFramebuffer(vulkan_device_, framebuffer, nullptr);
-	}
-
-	vkDestroyFence(vulkan_device_, fence_in_flight, nullptr);
-	vkDestroySemaphore(vulkan_device_, sem_image_available, nullptr);
-	vkDestroySemaphore(vulkan_device_, sem_render_finished, nullptr);
 	vkDestroyRenderPass(vulkan_device_, render_pass_, nullptr);
 	vkDestroyPipeline(vulkan_device_, pipeline_, nullptr);
 	vkDestroyPipelineLayout(vulkan_device_, pipeline_layout_, nullptr);
@@ -956,12 +965,14 @@ void VulkanGraphics::CreateCommandPool()
 
 void VulkanGraphics::CreateCommandBuffer()
 {
+	command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+
 	VkCommandBufferAllocateInfo allocate_info{};
 	allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocate_info.commandPool = command_pool;
 	allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocate_info.commandBufferCount = 1;
-	VkResult res = vkAllocateCommandBuffers(vulkan_device_, &allocate_info, &command_buffer);
+	allocate_info.commandBufferCount = (uint32_t)command_buffers.size();
+	VkResult res = vkAllocateCommandBuffers(vulkan_device_, &allocate_info, command_buffers.data());
 	if (res != VK_SUCCESS) {
 		LOG << "SUCCESS\t Couldn't create command buffer";
 	}
@@ -1026,6 +1037,10 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
 
 void VulkanGraphics::CreateSyncObjects()
 {
+	sem_image_available.resize(MAX_FRAMES_IN_FLIGHT);
+	sem_render_finished.resize(MAX_FRAMES_IN_FLIGHT);
+	fence_in_flight.resize(MAX_FRAMES_IN_FLIGHT);
+
 	VkSemaphoreCreateInfo semaphore_info{};
 	semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -1034,12 +1049,14 @@ void VulkanGraphics::CreateSyncObjects()
 	fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 	
 	// Create sync objects
-	VkResult res_image_available = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_image_available);
-	VkResult res_render_finished = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_render_finished);
-	VkResult in_flight = vkCreateFence(vulkan_device_, &fence_info, nullptr, &fence_in_flight);
+	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		VkResult res_image_available = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_image_available[i]);
+		VkResult res_render_finished = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_render_finished[i]);
+		VkResult in_flight = vkCreateFence(vulkan_device_, &fence_info, nullptr, &fence_in_flight[i]);
 
-	if (res_image_available && res_render_finished && in_flight != VK_SUCCESS) {
-		LOG << "Failed creating sync objects";
+		if (res_image_available && res_render_finished && in_flight != VK_SUCCESS) {
+			LOG << "Failed creating sync objects";
+		}
 	}
 }
 
@@ -1047,17 +1064,24 @@ void VulkanGraphics::CreateSyncObjects()
 void VulkanGraphics::RenderFrame()
 {
 	// Wait for GPU to finish
-	vkWaitForFences(vulkan_device_, 1, &fence_in_flight, true, UINT64_MAX);
-	vkResetFences(vulkan_device_, 1, &fence_in_flight);
+	vkWaitForFences(vulkan_device_, 1, &fence_in_flight[current_frame], true, UINT64_MAX);
 
 	// Get next image from swapchain
 	uint32_t image_index = 0;
-	vkAcquireNextImageKHR(vulkan_device_, swapchain_data_.swapchain, UINT64_MAX, sem_image_available, VK_NULL_HANDLE, &image_index);
+	VkResult sw_result = vkAcquireNextImageKHR(vulkan_device_, swapchain_data_.swapchain, UINT64_MAX, sem_image_available[current_frame], VK_NULL_HANDLE, &image_index);
+	if (sw_result == VK_ERROR_OUT_OF_DATE_KHR || sw_result == VK_SUBOPTIMAL_KHR) {
+		// Swapchain not compatible with the surface anymore
+		RecreateSwapchain(app_window->GetWindowData(), selected_device_);
+		return;
+	}
+
+	// Only wait for fences when the swapchain can render
+	vkResetFences(vulkan_device_, 1, &fence_in_flight[current_frame]);
 
 	// Make the command buffer able to record by resetting it. An already full buffer can't record
-	vkResetCommandBuffer(command_buffer, 0);
+	vkResetCommandBuffer(command_buffers[current_frame], 0);
 
-	RecordCommandBuffer(command_buffer, image_index);
+	RecordCommandBuffer(command_buffers[current_frame], image_index);
 
 	// Submit the queue to the gpu
 	VkSubmitInfo submit_info{};
@@ -1066,7 +1090,7 @@ void VulkanGraphics::RenderFrame()
 	// Tell vulkan at which stages to wait on give semaphores
 	// Wait at the color attachment output stage untill an image is available.
 	// The color attachment stageis defines when creating the render pass
-	VkSemaphore semaphores[]{sem_image_available};
+	VkSemaphore semaphores[]{sem_image_available[current_frame] };
 	VkPipelineStageFlags wait_stages[]{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 	submit_info.waitSemaphoreCount = 1;
 	submit_info.pWaitSemaphores = semaphores;
@@ -1074,16 +1098,16 @@ void VulkanGraphics::RenderFrame()
 
 	// Submit the command buffer to use
 	submit_info.commandBufferCount = 1;
-	submit_info.pCommandBuffers = &command_buffer;
+	submit_info.pCommandBuffers = &command_buffers[current_frame];
 
 	// Specify which semapores to signal when rendering is finished
-	VkSemaphore signal_semaphores[]{sem_render_finished};
+	VkSemaphore signal_semaphores[]{sem_render_finished[current_frame] };
 	submit_info.signalSemaphoreCount = 1;
 	submit_info.pSignalSemaphores = signal_semaphores;
 
 	// Submit the command buffer on the grphics queue. The command pool is only ony used for storing 
 	//command buffers in memory
-	vkQueueSubmit(device_queues_.graphics_queue, 1, &submit_info, fence_in_flight);
+	vkQueueSubmit(device_queues_.graphics_queue, 1, &submit_info, fence_in_flight[current_frame]);
 
 	VkPresentInfoKHR present_info{};
 	present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1096,10 +1120,26 @@ void VulkanGraphics::RenderFrame()
 	present_info.pResults = nullptr;
 	present_info.pImageIndices = &image_index;
 
-	vkQueuePresentKHR(device_queues_.present_queue, &present_info);
+	sw_result = vkQueuePresentKHR(device_queues_.present_queue, &present_info);
+	if (sw_result == VK_ERROR_OUT_OF_DATE_KHR || sw_result == VK_SUBOPTIMAL_KHR) {
+		// Swapchain not compatible with the surface anymore
+		RecreateSwapchain(app_window->GetWindowData(), selected_device_);
+	}
+
+	current_frame = (current_frame + 1) % (MAX_FRAMES_IN_FLIGHT);
 }
 
-VulkanGraphics::VulkanGraphics(const WindowData& window_data)
+void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysicalDevice device)
+{
+	vkDeviceWaitIdle(vulkan_device_);
+	DestroySwapchain();
+	CreateSwapchain(window_data, device);
+	CreateImageViews();
+	CreateFrambuffers();
+}
+
+VulkanGraphics::VulkanGraphics(BP_Window* window):
+	app_window(window)
 {
 	// Check if requested validation layers exist
 	bool validation_layer_support = CheckValidationLayerSupport();
@@ -1121,6 +1161,8 @@ VulkanGraphics::VulkanGraphics(const WindowData& window_data)
 	// Initialize vulkan
 	Initialize();
 	EnableVulkanDebugMessages();
+
+	WindowData window_data = app_window->GetWindowData();
 
 	LOG;
 	CreateVulkanSurface(window_data);

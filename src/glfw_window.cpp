@@ -34,8 +34,8 @@ void GLFWWindowImpl::Initialize(const WindowConfig& config)
 {
 	glfwInit();
 
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+	//glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	(GLFW_CLIENT_API, GLFW_NO_API);
 	window = glfwCreateWindow(config.width, config.height, "Vulkan", nullptr, nullptr);
 }
@@ -65,4 +65,13 @@ VkSurfaceKHR GLFWWindowImpl::CreateVulkanWindowSurface(VkInstance instance)
 	glfwCreateWindowSurface(instance, window, nullptr, &surface);
 
 	return surface;
+}
+
+WindowData GLFWWindowImpl::GetWindowData()
+{
+	WindowData w_data{};
+	GetWindowHandle(w_data.hwnd);
+	w_data.hinstance = GetModuleHandle(nullptr);
+	GetWindowResolution(w_data.window_width, w_data.window_height);
+	return w_data;
 }

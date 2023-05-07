@@ -10,7 +10,7 @@
 #include "bp_window.h"
 #include <klein/klein.hpp>
 
-class GLFWWindowImpl: public BP_Window {
+class GLFWWindowImpl: public BP_Win_Window {
 private:
 	GLFWwindow* window = nullptr;
 	
@@ -19,12 +19,15 @@ public:
 	GLFWWindowImpl(const WindowConfig& config);
 	~GLFWWindowImpl();
 
-	void UpdateWindow();
-	bool GetShouldClose();
-	void Initialize(const WindowConfig& config);
-	void Destroy();
-	void GetWindowResolution(uint32_t& width, uint32_t& height);
+	void UpdateWindow() override;
+	bool GetShouldClose() override;
+	void Initialize(const WindowConfig& config) override;
+	void Destroy() override;
+	void GetWindowResolution(uint32_t& width, uint32_t& height) override;
 
-	void GetWindowHandle(HWND& hwnd);
-	VkSurfaceKHR CreateVulkanWindowSurface(VkInstance instance);
+	void GetWindowHandle(HWND& hwnd) override;
+	VkSurfaceKHR CreateVulkanWindowSurface(VkInstance instance) override;
+
+	// Inherited via BP_Win_Window
+	virtual WindowData GetWindowData() override;
 };
