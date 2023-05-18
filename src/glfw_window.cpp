@@ -67,6 +67,11 @@ VkSurfaceKHR GLFWWindowImpl::CreateVulkanWindowSurface(VkInstance instance)
 	return surface;
 }
 
+GLFWwindow* GLFWWindowImpl::GLFWGetWindow()
+{
+	return window;
+}
+
 WindowData GLFWWindowImpl::GetWindowData()
 {
 	WindowData w_data{};

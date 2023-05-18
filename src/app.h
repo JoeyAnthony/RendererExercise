@@ -5,10 +5,11 @@
 #include "vulkan_graphics.h"
 
 class GraphicsApplication {
+
+public:
 	GLFWWindowImpl* app_window = nullptr;
 	VulkanGraphics* graphics = nullptr;
 
-public:
 	bool shouldRun;
 
 	void Initialize();

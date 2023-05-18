@@ -28,6 +28,11 @@ public:
 	void GetWindowHandle(HWND& hwnd) override;
 	VkSurfaceKHR CreateVulkanWindowSurface(VkInstance instance) override;
 
+
+	// GLFW
+	GLFWwindow* GLFWGetWindow();
+
+
 	// Inherited via BP_Win_Window
 	virtual WindowData GetWindowData() override;
 };
