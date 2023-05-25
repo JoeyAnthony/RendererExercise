@@ -5,6 +5,12 @@
 #include <vector>
 #include <array>
 
+struct UniformBufferObject {
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 projection;
+};
+
 namespace geometry_triangle_helpers {
 
 	struct Vertex {
@@ -12,10 +18,21 @@ namespace geometry_triangle_helpers {
 		glm::vec3 color;
 	};
 
+	const std::vector<uint16_t> quad_indices{
+		1, 0, 2, 1, 2, 3, 1
+	};
+
+	const std::vector<Vertex> quad_vertices{
+		{{ 0.7f, -.5f, 0.0f}, { 1.0f, 0.5f, 0.0f }},
+		{{ -0.7f, -.5f, 0.0f}, { 1.0f, 0.5f, 0.0f }},
+		{{ 0.7f, .5f, 0.0f }, {0.0f, 1.f, 0.3f }},
+		{{ -0.7f, .5f, 0.0f }, {0.1f, 0.0f, 1.0f }}
+	};
+
 	const std::vector<Vertex> triangle_vertices{
-		{{ 0.0f, -.5f, 0.0f}, { 1.0f, 0.0f, 0.0f }},
-		{{ .5f, .5f, 0.0f }, {0.0f, 1.f, 0.0f }},
-		{{ -.5f, .5f, 0.0f }, {0.0f, 0.0f, 1.0f }}
+	{{ 0.0f, -.5f, 0.0f}, { 1.0f, 0.5f, 0.0f }},
+	{{ .5f, .5f, 0.0f }, {0.0f, 1.f, 0.3f }},
+	{{ -.5f, .5f, 0.0f }, {0.1f, 0.0f, 1.0f }}
 	};
 
 	VkVertexInputBindingDescription GetVertexBindingDescription();

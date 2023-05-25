@@ -75,7 +75,7 @@ static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMesse
 }
 
 class VulkanGraphics {
-    BP_Window* app_window;
+    BP_Window* app_window_;
     VkInstance instance_;
     VkDebugUtilsMessengerEXT debug_messenger_;
     VkSurfaceKHR vulkan_surface_;
@@ -86,6 +86,7 @@ class VulkanGraphics {
 
     VkRenderPass render_pass_;
     VkPipelineLayout pipeline_layout_;
+    VkDescriptorSetLayout descriptor_set_layout_;
     VkPipeline pipeline_;
 
     // Validation layers used in this application
@@ -94,20 +95,23 @@ class VulkanGraphics {
     const std::vector<const char*> required_device_extensions_ = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME, "VK_KHR_external_memory_win32", VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME, "VK_KHR_external_semaphore_win32", VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME };
 
     BP_SwapchainInfo swapchain_data_;
-    VkCommandPool command_pool;
+    VkCommandPool command_pool_;
 
     // Per in-flight frames
-    uint32_t current_frame = 0;
-    std::vector<VkCommandBuffer> command_buffers;
-    std::vector<VkSemaphore> sem_image_available;
-    std::vector<VkSemaphore> sem_render_finished;
-    std::vector<VkFence> fence_in_flight;
+    uint32_t current_frame_ = 0;
+    std::vector<VkCommandBuffer> command_buffers_;
+    std::vector<VkSemaphore> sem_image_available_;
+    std::vector<VkSemaphore> sem_render_finished_;
+    std::vector<VkFence> fence_in_flight_;
 
-    bool resize_necessary = false;
-    uint32_t win_width = 600, win_height = 600;
+    bool resize_necessary_ = false;
+    uint32_t win_width_ = 600, win_height_ = 600;
 
     VkBuffer triangle_buffer_;
-    VkDeviceMemory triangle_buffer_memory;
+    VkDeviceMemory triangle_buffer_memory_;
+    VkBuffer index_buffer_;
+    VkDeviceMemory index_buffer_memory_;
+
 
 private:
     bool Initialize();
@@ -179,15 +183,23 @@ public:
 
     void CreateRenderPass();
 
+    void CreateDescriptorSetLayout();
+
     void CreateGraphicsPipeline();
 
     void CreateFramebuffers();
+
+    void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks* p_allocate_info = nullptr);
 
     void CreateCommandPool();
 
     void CreateVertexBuffer();
 
+    void CreateIndexBuffer();
+
     void CreateCommandBuffer();
+
+    void Copy_Buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
 
     void RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint32_t img_index);
 

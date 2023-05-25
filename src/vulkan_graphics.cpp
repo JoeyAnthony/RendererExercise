@@ -211,9 +211,9 @@ void VulkanGraphics::Edulcorate()
     }
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkDestroyFence(vulkan_device_, fence_in_flight[i], nullptr);
-        vkDestroySemaphore(vulkan_device_, sem_image_available[i], nullptr);
-        vkDestroySemaphore(vulkan_device_, sem_render_finished[i], nullptr);
+        vkDestroyFence(vulkan_device_, fence_in_flight_[i], nullptr);
+        vkDestroySemaphore(vulkan_device_, sem_image_available_[i], nullptr);
+        vkDestroySemaphore(vulkan_device_, sem_render_finished_[i], nullptr);
     }
 
     vkDestroyRenderPass(vulkan_device_, render_pass_, nullptr);
@@ -221,7 +221,9 @@ void VulkanGraphics::Edulcorate()
     vkDestroyPipelineLayout(vulkan_device_, pipeline_layout_, nullptr);
     DestroyDebugUtilsMessengerEXT(instance_, debug_messenger_, nullptr);
     vkDestroyBuffer(vulkan_device_, triangle_buffer_, nullptr);
-    vkFreeMemory(vulkan_device_, triangle_buffer_memory, nullptr);
+    vkFreeMemory(vulkan_device_, triangle_buffer_memory_, nullptr);
+    vkDestroyBuffer(vulkan_device_, index_buffer_, nullptr);
+    vkFreeMemory(vulkan_device_, index_buffer_memory_, nullptr);
     vkDestroyDevice(vulkan_device_, nullptr);
     vkDestroyInstance(instance_, nullptr);
 
@@ -466,9 +468,9 @@ void VulkanGraphics::CreateLogicalDevice()
 
 void VulkanGraphics::ResizeBuffer(uint32_t width, uint32_t height)
 {
-    resize_necessary = true;
-    win_width = width;
-    win_height = height;
+    resize_necessary_ = true;
+    win_width_ = width;
+    win_height_ = height;
 }
 
 VkInstance VulkanGraphics::GetVulkanInstance()
@@ -781,6 +783,27 @@ void VulkanGraphics::CreateRenderPass() {
     }
 }
 
+void VulkanGraphics::CreateDescriptorSetLayout()
+{
+    // Tell the shader what type of object it can access, it's binding position and in which shader stage
+    VkDescriptorSetLayoutBinding layout{};
+    layout.binding = 0;
+    layout.descriptorCount = 1;
+    layout.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    layout.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    layout.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    create_info.bindingCount = 1;
+    create_info.pBindings = &layout;
+
+    VkResult res = vkCreateDescriptorSetLayout(vulkan_device_, &create_info, nullptr, &descriptor_set_layout_);
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Failed to create descriptor seet layout, error:" << res;
+    }
+}
+
 void VulkanGraphics::CreateGraphicsPipeline()
 {
     // Load shaders
@@ -976,6 +999,39 @@ void VulkanGraphics::CreateFramebuffers()
     }
 }
 
+void VulkanGraphics::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks *p_allocate_info)
+{
+    VkBufferCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    create_info.size = size;
+    create_info.usage = usage;
+    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkResult res = vkCreateBuffer(vulkan_device_, &create_info, nullptr, &buffer);
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Failed creating vertex buffer, error: " << res;
+    }
+
+    // Get memory requirements
+    VkMemoryRequirements mem_requirements{};
+    vkGetBufferMemoryRequirements(vulkan_device_, buffer, &mem_requirements);
+
+    // Allocate memory for the buffer
+    VkMemoryAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = FindMemoryTypes(mem_requirements.memoryTypeBits, memory_properties);
+
+    res = vkAllocateMemory(vulkan_device_, &alloc_info, p_allocate_info, &memory);
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Failed to allocate buffer memory";
+        return;
+    }
+
+    // Maybe make offset a parameter later for multiple buffer allocation in the same memory space
+    vkBindBufferMemory(vulkan_device_, buffer, memory, 0);
+}
+
 void VulkanGraphics::CreateCommandPool()
 {
     VkCommandPoolCreateInfo command_pool_info{};
@@ -984,7 +1040,7 @@ void VulkanGraphics::CreateCommandPool()
     command_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     
-    VkResult res = vkCreateCommandPool(vulkan_device_, &command_pool_info, nullptr, &command_pool);
+    VkResult res = vkCreateCommandPool(vulkan_device_, &command_pool_info, nullptr, &command_pool_);
     if (res == VK_SUCCESS) {
         LOG << "SUCCESS\t Created command pool";
     }
@@ -995,56 +1051,120 @@ void VulkanGraphics::CreateCommandPool()
 
 void VulkanGraphics::CreateVertexBuffer()
 {
-    VkBufferCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    create_info.size = sizeof(geometry_triangle_helpers::Vertex) * geometry_triangle_helpers::triangle_vertices.size();
-    create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    uint64_t size = sizeof(geometry_triangle_helpers::Vertex) * geometry_triangle_helpers::quad_indices.size();
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_mem;
 
-    VkResult res = vkCreateBuffer(vulkan_device_, &create_info, nullptr, &triangle_buffer_);
-    if (res != VK_SUCCESS) {
-        LOG << "FAILURE\t Failed creating vertex buffer, error: " << res;
-    }
-
-    // Get memory requirements
-    VkMemoryRequirements mem_requirements{};
-    vkGetBufferMemoryRequirements(vulkan_device_, triangle_buffer_, &mem_requirements);
-
-    // Allocate memory for the buffer
-    VkMemoryAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = FindMemoryTypes(mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    res = vkAllocateMemory(vulkan_device_, &alloc_info, nullptr, &triangle_buffer_memory);
-    if (res != VK_SUCCESS) {
-        LOG << "FAILUNRE\t Failed to allocate buffer memory";
-        return;
-    }
-
-    vkBindBufferMemory(vulkan_device_, triangle_buffer_, triangle_buffer_memory, 0);
+    // Create staging buffer
+    // It functions as a source transfer buffer on cpu accesible memory
+    CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_mem, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     // Map buffer memory to cpu accessible memory
     // Then copy vertices for the gpu to load
     void* data;
-    vkMapMemory(vulkan_device_, triangle_buffer_memory, 0, create_info.size, 0, &data);
-    memcpy(data, geometry_triangle_helpers::triangle_vertices.data(), (size_t)create_info.size);
-    vkUnmapMemory(vulkan_device_, triangle_buffer_memory);
+    vkMapMemory(vulkan_device_, staging_buffer_mem, 0, size, 0, &data);
+    memcpy(data, geometry_triangle_helpers::quad_vertices.data(), (size_t)size);
+    vkUnmapMemory(vulkan_device_, staging_buffer_mem);
+
+    // Create triangle buffers and memory
+    // Vertex buffer on gpu local memory, not accesible my the cpu and is faster
+    CreateBuffer(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, triangle_buffer_, triangle_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    // Copy data to local memory
+    Copy_Buffer(staging_buffer, triangle_buffer_, size);
+
+    // Delete staging buffers
+    vkDestroyBuffer(vulkan_device_, staging_buffer, nullptr);
+    vkFreeMemory(vulkan_device_, staging_buffer_mem, nullptr);
+
+
+}
+
+void VulkanGraphics::CreateIndexBuffer()
+{
+    uint64_t size = geometry_triangle_helpers::quad_indices.size() * sizeof(uint32_t);
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_mem;
+
+    // Create staging buffer
+    CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_mem, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    void* data;
+    vkMapMemory(vulkan_device_, staging_buffer_mem, 0, size, 0, &data);
+    memcpy(data, geometry_triangle_helpers::quad_indices.data(), (size_t)size);
+
+    // Create index buffer
+    CreateBuffer(size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, index_buffer_, index_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    Copy_Buffer(staging_buffer, index_buffer_, size);
+
+    vkDestroyBuffer(vulkan_device_, staging_buffer, nullptr);
+    vkFreeMemory(vulkan_device_, staging_buffer_mem, nullptr);
 }
 
 void VulkanGraphics::CreateCommandBuffer()
 {
-    command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+    command_buffers_.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkCommandBufferAllocateInfo allocate_info{};
     allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocate_info.commandPool = command_pool;
+    allocate_info.commandPool = command_pool_;
     allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocate_info.commandBufferCount = (uint32_t)command_buffers.size();
-    VkResult res = vkAllocateCommandBuffers(vulkan_device_, &allocate_info, command_buffers.data());
+    allocate_info.commandBufferCount = (uint32_t)command_buffers_.size();
+    VkResult res = vkAllocateCommandBuffers(vulkan_device_, &allocate_info, command_buffers_.data());
     if (res != VK_SUCCESS) {
         LOG << "SUCCESS\t Couldn't create command buffer";
     }
+}
+
+void VulkanGraphics::Copy_Buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
+{
+    // Usually, creating a separate command pool for short lived command buffers can help with memory optimizations
+    // Use the flag VK_COMMAND_POOL_CREATE_TRANSIENT_BIT when creating a command pool in that case
+
+    // Create command buffer to make transfer calls
+    VkCommandBufferAllocateInfo command_buffer_info{};
+    command_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    command_buffer_info.commandBufferCount = 1;
+    command_buffer_info.commandPool = command_pool_;
+    command_buffer_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    VkCommandBuffer cmd_buffer{};
+    VkResult res = vkAllocateCommandBuffers(vulkan_device_, &command_buffer_info, &cmd_buffer);
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Couldn't allocate command buffer for copying";
+    }
+
+    VkCommandBufferBeginInfo cmd_transfer_begin{};
+    cmd_transfer_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmd_transfer_begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // Single call for allocation, so specify to the driver
+    cmd_transfer_begin.pInheritanceInfo = nullptr;
+
+    // Start command buffer recording with BeginCommandBuffer
+    res = vkBeginCommandBuffer(cmd_buffer, &cmd_transfer_begin);
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Failed creating command buffer for copying";
+    }
+    
+    VkBufferCopy copy_region{};
+    copy_region.srcOffset = 0;
+    copy_region.dstOffset = 0;
+    copy_region.size = size;
+
+    vkCmdCopyBuffer(cmd_buffer, src, dst, 1, &copy_region);
+    vkEndCommandBuffer(cmd_buffer);
+
+    // Submit the command pool
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cmd_buffer;
+
+    // Because we just wait for the queue to finish, we don't need syncing objects
+    vkQueueSubmit(device_queues_.graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(device_queues_.graphics_queue);
+
+    vkFreeCommandBuffers(vulkan_device_, command_pool_, 1, &cmd_buffer);
 }
 
 void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint32_t img_index)
@@ -1096,7 +1216,8 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
     VkBuffer vertex_buffers[] = { triangle_buffer_ };
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers, offsets);
-    vkCmdDraw(cmd_buffer, geometry_triangle_helpers::triangle_vertices.size(), 1, 0, 0);
+    vkCmdBindIndexBuffer(cmd_buffer, index_buffer_, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdDrawIndexed(cmd_buffer, geometry_triangle_helpers::quad_indices.size(), 1, 0, 0, 0);
 
     // End render pass
     vkCmdEndRenderPass(cmd_buffer);
@@ -1109,9 +1230,9 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
 
 void VulkanGraphics::CreateSyncObjects()
 {
-    sem_image_available.resize(MAX_FRAMES_IN_FLIGHT);
-    sem_render_finished.resize(MAX_FRAMES_IN_FLIGHT);
-    fence_in_flight.resize(MAX_FRAMES_IN_FLIGHT);
+    sem_image_available_.resize(MAX_FRAMES_IN_FLIGHT);
+    sem_render_finished_.resize(MAX_FRAMES_IN_FLIGHT);
+    fence_in_flight_.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkSemaphoreCreateInfo semaphore_info{};
     semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -1122,9 +1243,9 @@ void VulkanGraphics::CreateSyncObjects()
     
     // Create sync objects
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        VkResult res_image_available = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_image_available[i]);
-        VkResult res_render_finished = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_render_finished[i]);
-        VkResult in_flight = vkCreateFence(vulkan_device_, &fence_info, nullptr, &fence_in_flight[i]);
+        VkResult res_image_available = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_image_available_[i]);
+        VkResult res_render_finished = vkCreateSemaphore(vulkan_device_, &semaphore_info, nullptr, &sem_render_finished_[i]);
+        VkResult in_flight = vkCreateFence(vulkan_device_, &fence_info, nullptr, &fence_in_flight_[i]);
 
         if (res_image_available && res_render_finished && in_flight != VK_SUCCESS) {
             LOG << "Failed creating sync objects";
@@ -1136,25 +1257,25 @@ void VulkanGraphics::CreateSyncObjects()
 void VulkanGraphics::RenderFrame()
 {
     // Wait for GPU to finish
-    vkWaitForFences(vulkan_device_, 1, &fence_in_flight[current_frame], true, UINT64_MAX);
+    vkWaitForFences(vulkan_device_, 1, &fence_in_flight_[current_frame_], true, UINT64_MAX);
 
     // Get next image from swapchain
     uint32_t image_index = 0;
-    VkResult sw_result = vkAcquireNextImageKHR(vulkan_device_, swapchain_data_.swapchain, UINT64_MAX, sem_image_available[current_frame], VK_NULL_HANDLE, &image_index);
-    if (sw_result == VK_ERROR_OUT_OF_DATE_KHR || sw_result == VK_SUBOPTIMAL_KHR || resize_necessary) {
+    VkResult sw_result = vkAcquireNextImageKHR(vulkan_device_, swapchain_data_.swapchain, UINT64_MAX, sem_image_available_[current_frame_], VK_NULL_HANDLE, &image_index);
+    if (sw_result == VK_ERROR_OUT_OF_DATE_KHR || sw_result == VK_SUBOPTIMAL_KHR || resize_necessary_) {
         // Swapchain not compatible with the surface anymore
-        resize_necessary = false;
-        RecreateSwapchain(app_window->GetWindowData(), selected_device_);
+        resize_necessary_ = false;
+        RecreateSwapchain(app_window_->GetWindowData(), selected_device_);
         return;
     }
 
     // Only wait for fences when the swapchain can render
-    vkResetFences(vulkan_device_, 1, &fence_in_flight[current_frame]);
+    vkResetFences(vulkan_device_, 1, &fence_in_flight_[current_frame_]);
 
     // Make the command buffer able to record by resetting it. An already full buffer can't record
-    vkResetCommandBuffer(command_buffers[current_frame], 0);
+    vkResetCommandBuffer(command_buffers_[current_frame_], 0);
 
-    RecordCommandBuffer(command_buffers[current_frame], image_index);
+    RecordCommandBuffer(command_buffers_[current_frame_], image_index);
 
     // Submit the queue to the gpu
     VkSubmitInfo submit_info{};
@@ -1163,7 +1284,7 @@ void VulkanGraphics::RenderFrame()
     // Tell vulkan at which stages to wait on give semaphores
     // Wait at the color attachment output stage untill an image is available.
     // The color attachment stageis defines when creating the render pass
-    VkSemaphore semaphores[]{sem_image_available[current_frame] };
+    VkSemaphore semaphores[]{sem_image_available_[current_frame_] };
     VkPipelineStageFlags wait_stages[]{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submit_info.waitSemaphoreCount = 1;
     submit_info.pWaitSemaphores = semaphores;
@@ -1171,16 +1292,16 @@ void VulkanGraphics::RenderFrame()
 
     // Submit the command buffer to use
     submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffers[current_frame];
+    submit_info.pCommandBuffers = &command_buffers_[current_frame_];
 
     // Specify which semapores to signal when rendering is finished
-    VkSemaphore signal_semaphores[]{sem_render_finished[current_frame] };
+    VkSemaphore signal_semaphores[]{sem_render_finished_[current_frame_] };
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
     // Submit the command buffer on the grphics queue. The command pool is only ony used for storing 
     //command buffers in memory
-    vkQueueSubmit(device_queues_.graphics_queue, 1, &submit_info, fence_in_flight[current_frame]);
+    vkQueueSubmit(device_queues_.graphics_queue, 1, &submit_info, fence_in_flight_[current_frame_]);
 
     VkPresentInfoKHR present_info{};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1194,13 +1315,13 @@ void VulkanGraphics::RenderFrame()
     present_info.pImageIndices = &image_index;
 
     sw_result = vkQueuePresentKHR(device_queues_.present_queue, &present_info);
-    if (sw_result == VK_ERROR_OUT_OF_DATE_KHR || sw_result == VK_SUBOPTIMAL_KHR || resize_necessary) {
+    if (sw_result == VK_ERROR_OUT_OF_DATE_KHR || sw_result == VK_SUBOPTIMAL_KHR || resize_necessary_) {
         // Swapchain not compatible with the surface anymore
-        resize_necessary = false;
-        RecreateSwapchain(app_window->GetWindowData(), selected_device_);
+        resize_necessary_ = false;
+        RecreateSwapchain(app_window_->GetWindowData(), selected_device_);
     }
 
-    current_frame = (current_frame + 1) % (MAX_FRAMES_IN_FLIGHT);
+    current_frame_ = (current_frame_ + 1) % (MAX_FRAMES_IN_FLIGHT);
 }
 
 void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysicalDevice device)
@@ -1211,7 +1332,7 @@ void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysical
 
     while (win.window_width == 0 || win.window_height == 0) {
         glfwWaitEvents();
-        win = app_window->GetWindowData();
+        win = app_window_->GetWindowData();
     }
 
     CreateSwapchain(win, device);
@@ -1220,7 +1341,7 @@ void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysical
 }
 
 VulkanGraphics::VulkanGraphics(BP_Window* window):
-    app_window(window)
+    app_window_(window)
 {
     // Check if requested validation layers exist
     bool validation_layer_support = CheckValidationLayerSupport();
@@ -1243,7 +1364,7 @@ VulkanGraphics::VulkanGraphics(BP_Window* window):
     Initialize();
     EnableVulkanDebugMessages();
 
-    WindowData window_data = app_window->GetWindowData();
+    WindowData window_data = app_window_->GetWindowData();
 
     LOG;
     CreateVulkanSurface(window_data);
@@ -1253,9 +1374,10 @@ VulkanGraphics::VulkanGraphics(BP_Window* window):
     CreateImageViews();
     CreateRenderPass();
     CreateGraphicsPipeline();
-    CreateVertexBuffer();
     CreateFramebuffers();
     CreateCommandPool();
+    CreateVertexBuffer();
+    CreateIndexBuffer();
     CreateCommandBuffer();
     CreateSyncObjects();
 }
