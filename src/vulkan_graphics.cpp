@@ -9,9 +9,15 @@
 #include "vulkan_shader.h"
 #include "geometry-helpers.h"
 
+#define GLM_FORCE_RADIANS
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <chrono>
+
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
 {
-    if (messageSeverity > VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+    if (messageSeverity >= VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
         BP_LOG(LogSeverity::BP_DEBUG, LogColor::PURPLE) << pCallbackData->pMessage;
     }
 
@@ -220,14 +226,29 @@ void VulkanGraphics::Edulcorate()
     vkDestroyPipeline(vulkan_device_, pipeline_, nullptr);
     vkDestroyPipelineLayout(vulkan_device_, pipeline_layout_, nullptr);
     DestroyDebugUtilsMessengerEXT(instance_, debug_messenger_, nullptr);
+    vkDestroyDescriptorSetLayout(vulkan_device_, descriptor_set_layout_, nullptr);
+
+    // Destroy vertex and index buffers
     vkDestroyBuffer(vulkan_device_, triangle_buffer_, nullptr);
     vkFreeMemory(vulkan_device_, triangle_buffer_memory_, nullptr);
     vkDestroyBuffer(vulkan_device_, index_buffer_, nullptr);
     vkFreeMemory(vulkan_device_, index_buffer_memory_, nullptr);
+
+    // Destroy uniform buffers
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroyBuffer(vulkan_device_, index_buffer_, nullptr);
+        vkFreeMemory(vulkan_device_, index_buffer_memory_, nullptr);
+    }
+
+    vkDestroyDescriptorPool(vulkan_device_, descriptor_pool_, nullptr);
+
+    // Destroy unform buffer shader layout
+    vkDestroyDescriptorSetLayout(vulkan_device_, descriptor_set_layout_, nullptr);
+
     vkDestroyDevice(vulkan_device_, nullptr);
     vkDestroyInstance(instance_, nullptr);
 
-    //vkDeviceWaitIdle(vulkan_device_);
+    vkDeviceWaitIdle(vulkan_device_);
 }
 
 void VulkanGraphics::CreateVulkanSurface(const WindowData& window_data)
@@ -589,24 +610,6 @@ VkExtent2D VulkanGraphics::GetPreferredSwapchainExtend(const WindowData& window_
     return swapchain_extends;
 }
 
-uint32_t VulkanGraphics::FindMemoryTypes(uint32_t type_filter, VkMemoryPropertyFlags properties)
-{
-    VkPhysicalDeviceMemoryProperties props {};
-    vkGetPhysicalDeviceMemoryProperties(selected_device_, &props);
-
-    for (int i = 0; i < props.memoryTypeCount; i++) {
-        // Check if the bitfield of the type filter corresponds to the index
-        if ((type_filter & (1 << i)) && 
-            // AND the property flags with the expected properties, then check if the resulting value is what we want
-            // Making sure we don't just look for a non-zero value
-            (properties & props.memoryTypes[i].propertyFlags) == properties) {
-            return i;
-        }
-    }
-
-    return 0;
-}
-
 bool VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device)
 {
     SwapChainDetails sw_detail = QuerySwapchainSupport(device);
@@ -786,6 +789,7 @@ void VulkanGraphics::CreateRenderPass() {
 void VulkanGraphics::CreateDescriptorSetLayout()
 {
     // Tell the shader what type of object it can access, it's binding position and in which shader stage
+    // In this case it's a uniform buffer
     VkDescriptorSetLayoutBinding layout{};
     layout.binding = 0;
     layout.descriptorCount = 1;
@@ -793,6 +797,7 @@ void VulkanGraphics::CreateDescriptorSetLayout()
     layout.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     layout.pImmutableSamplers = nullptr;
 
+    // Create info holds a list of descriptor layouts
     VkDescriptorSetLayoutCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     create_info.bindingCount = 1;
@@ -884,8 +889,8 @@ void VulkanGraphics::CreateGraphicsPipeline()
     // Face culling
     rasterizer_state.polygonMode = VK_POLYGON_MODE_FILL; // Using any mode other than fill requires enabling a GPU feature.
     rasterizer_state.lineWidth = 1.0f;
-    rasterizer_state.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer_state.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer_state.cullMode = VK_CULL_MODE_NONE;
+    rasterizer_state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
     // Depth settings
     rasterizer_state.depthClampEnable = VK_FALSE;
@@ -932,8 +937,8 @@ void VulkanGraphics::CreateGraphicsPipeline()
     // Describes the uniform data used in shaders
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 0;
-    pipeline_layout_info.pSetLayouts = nullptr;
+    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = &descriptor_set_layout_;
     pipeline_layout_info.pushConstantRangeCount = 0;
     pipeline_layout_info.pPushConstantRanges = nullptr;
 
@@ -999,39 +1004,6 @@ void VulkanGraphics::CreateFramebuffers()
     }
 }
 
-void VulkanGraphics::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks *p_allocate_info)
-{
-    VkBufferCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    create_info.size = size;
-    create_info.usage = usage;
-    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkResult res = vkCreateBuffer(vulkan_device_, &create_info, nullptr, &buffer);
-    if (res != VK_SUCCESS) {
-        LOG << "FAILURE\t Failed creating vertex buffer, error: " << res;
-    }
-
-    // Get memory requirements
-    VkMemoryRequirements mem_requirements{};
-    vkGetBufferMemoryRequirements(vulkan_device_, buffer, &mem_requirements);
-
-    // Allocate memory for the buffer
-    VkMemoryAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = FindMemoryTypes(mem_requirements.memoryTypeBits, memory_properties);
-
-    res = vkAllocateMemory(vulkan_device_, &alloc_info, p_allocate_info, &memory);
-    if (res != VK_SUCCESS) {
-        LOG << "FAILURE\t Failed to allocate buffer memory";
-        return;
-    }
-
-    // Maybe make offset a parameter later for multiple buffer allocation in the same memory space
-    vkBindBufferMemory(vulkan_device_, buffer, memory, 0);
-}
-
 void VulkanGraphics::CreateCommandPool()
 {
     VkCommandPoolCreateInfo command_pool_info{};
@@ -1057,7 +1029,7 @@ void VulkanGraphics::CreateVertexBuffer()
 
     // Create staging buffer
     // It functions as a source transfer buffer on cpu accesible memory
-    CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_mem, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_mem, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     // Map buffer memory to cpu accessible memory
     // Then copy vertices for the gpu to load
@@ -1068,10 +1040,10 @@ void VulkanGraphics::CreateVertexBuffer()
 
     // Create triangle buffers and memory
     // Vertex buffer on gpu local memory, not accesible my the cpu and is faster
-    CreateBuffer(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, triangle_buffer_, triangle_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, triangle_buffer_, triangle_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     // Copy data to local memory
-    Copy_Buffer(staging_buffer, triangle_buffer_, size);
+    Copy_Buffer(vulkan_device_, command_pool_, device_queues_.graphics_queue,staging_buffer, triangle_buffer_, size);
 
     // Delete staging buffers
     vkDestroyBuffer(vulkan_device_, staging_buffer, nullptr);
@@ -1087,19 +1059,33 @@ void VulkanGraphics::CreateIndexBuffer()
     VkDeviceMemory staging_buffer_mem;
 
     // Create staging buffer
-    CreateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_mem, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_mem, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     void* data;
     vkMapMemory(vulkan_device_, staging_buffer_mem, 0, size, 0, &data);
     memcpy(data, geometry_triangle_helpers::quad_indices.data(), (size_t)size);
 
     // Create index buffer
-    CreateBuffer(size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, index_buffer_, index_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, index_buffer_, index_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    Copy_Buffer(staging_buffer, index_buffer_, size);
+    Copy_Buffer(vulkan_device_, command_pool_, device_queues_.graphics_queue, staging_buffer, index_buffer_, size);
 
     vkDestroyBuffer(vulkan_device_, staging_buffer, nullptr);
     vkFreeMemory(vulkan_device_, staging_buffer_mem, nullptr);
+}
+
+void VulkanGraphics::CreateUniformBuffers()
+{
+    uniform_buffers_.resize(MAX_FRAMES_IN_FLIGHT);
+    uniform_memory_.resize(MAX_FRAMES_IN_FLIGHT);
+    uniform_mapped_memory_.resize(MAX_FRAMES_IN_FLIGHT);
+
+    VkDeviceSize size = sizeof(UniformBufferObject);
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniform_buffers_[i], uniform_memory_[i], VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        vkMapMemory(vulkan_device_, uniform_memory_[i], 0, size, 0, &uniform_mapped_memory_[i]);
+    }
 }
 
 void VulkanGraphics::CreateCommandBuffer()
@@ -1117,54 +1103,66 @@ void VulkanGraphics::CreateCommandBuffer()
     }
 }
 
-void VulkanGraphics::Copy_Buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
+void VulkanGraphics::CreateDescriptorPools()
 {
-    // Usually, creating a separate command pool for short lived command buffers can help with memory optimizations
-    // Use the flag VK_COMMAND_POOL_CREATE_TRANSIENT_BIT when creating a command pool in that case
+    VkDescriptorPoolSize poolsize{};
+    poolsize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolsize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-    // Create command buffer to make transfer calls
-    VkCommandBufferAllocateInfo command_buffer_info{};
-    command_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    command_buffer_info.commandBufferCount = 1;
-    command_buffer_info.commandPool = command_pool_;
-    command_buffer_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    VkDescriptorPoolCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    info.poolSizeCount = 1;
+    info.pPoolSizes = &poolsize;
+    info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-    VkCommandBuffer cmd_buffer{};
-    VkResult res = vkAllocateCommandBuffers(vulkan_device_, &command_buffer_info, &cmd_buffer);
+    VkResult res = vkCreateDescriptorPool(vulkan_device_, &info, nullptr, &descriptor_pool_);
     if (res != VK_SUCCESS) {
-        LOG << "FAILURE\t Couldn't allocate command buffer for copying";
+        LOG << "FAILURE\t Failed creatinf descriptor pool, error:" << res;
     }
+}
 
-    VkCommandBufferBeginInfo cmd_transfer_begin{};
-    cmd_transfer_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_transfer_begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // Single call for allocation, so specify to the driver
-    cmd_transfer_begin.pInheritanceInfo = nullptr;
-
-    // Start command buffer recording with BeginCommandBuffer
-    res = vkBeginCommandBuffer(cmd_buffer, &cmd_transfer_begin);
-    if (res != VK_SUCCESS) {
-        LOG << "FAILURE\t Failed creating command buffer for copying";
-    }
+void VulkanGraphics::CreateDescriptorSets()
+{
+    // Create allocation info struct
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptor_set_layout_);
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = descriptor_pool_;
+    alloc_info.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    alloc_info.pSetLayouts = layouts.data();
     
-    VkBufferCopy copy_region{};
-    copy_region.srcOffset = 0;
-    copy_region.dstOffset = 0;
-    copy_region.size = size;
+    // Resize array
+    descriptor_sets_.resize(MAX_FRAMES_IN_FLIGHT);
+    VkResult res = vkAllocateDescriptorSets(vulkan_device_, &alloc_info, descriptor_sets_.data());
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Failed creatinf descriptor sets, error:" << res;
+    }
 
-    vkCmdCopyBuffer(cmd_buffer, src, dst, 1, &copy_region);
-    vkEndCommandBuffer(cmd_buffer);
+    // Configure descriptors by binding the uniform buffers
+    // Could use arrays of descriptor sets as well instead of this loop configuring them one by one
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo buffer_info{};
+        buffer_info.buffer = uniform_buffers_[i];
+        buffer_info.offset = 0;
+        buffer_info.range = sizeof(UniformBufferObject);
 
-    // Submit the command pool
-    VkSubmitInfo submit_info{};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &cmd_buffer;
+		// Update the desciptor set configurations
+		VkWriteDescriptorSet write{};
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = descriptor_sets_[i];
+        write.dstBinding = 0;
+        write.dstArrayElement = 0;
+        
+        write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        write.descriptorCount = 1;
 
-    // Because we just wait for the queue to finish, we don't need syncing objects
-    vkQueueSubmit(device_queues_.graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-    vkQueueWaitIdle(device_queues_.graphics_queue);
+        write.pBufferInfo = &buffer_info;
+        // Depends on what type of buffers that are being used
+        write.pImageInfo = nullptr; // Optional
+        write.pTexelBufferView = nullptr; // Optional
 
-    vkFreeCommandBuffers(vulkan_device_, command_pool_, 1, &cmd_buffer);
+        vkUpdateDescriptorSets(vulkan_device_, 1, &write, 0, nullptr);
+	}
 }
 
 void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint32_t img_index)
@@ -1188,7 +1186,7 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
     begin_pass_info.renderArea.extent = swapchain_data_.extent;
 
     // Set clear color
-    VkClearValue clear_color = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
+    VkClearValue clear_color = { {{0.1f, 0.2f, 0.1f, 1.0f}} };
     begin_pass_info.clearValueCount = 1;
     begin_pass_info.pClearValues = &clear_color;
 
@@ -1217,6 +1215,7 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers, offsets);
     vkCmdBindIndexBuffer(cmd_buffer, index_buffer_, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_sets_[current_frame_], 0, nullptr);
     vkCmdDrawIndexed(cmd_buffer, geometry_triangle_helpers::quad_indices.size(), 1, 0, 0, 0);
 
     // End render pass
@@ -1277,6 +1276,8 @@ void VulkanGraphics::RenderFrame()
 
     RecordCommandBuffer(command_buffers_[current_frame_], image_index);
 
+    UpdateUniformBuffer(current_frame_);
+
     // Submit the queue to the gpu
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1322,6 +1323,28 @@ void VulkanGraphics::RenderFrame()
     }
 
     current_frame_ = (current_frame_ + 1) % (MAX_FRAMES_IN_FLIGHT);
+}
+
+void VulkanGraphics::UpdateUniformBuffer(uint32_t current_frame)
+{
+    static auto start_time = std::chrono::high_resolution_clock::now();
+
+    auto current_time = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+
+    UniformBufferObject ubo{};
+    // rotate over z
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.f), glm::vec3(0.0f, 0.0f, 1.0f));
+    // Look at the center from a distance
+    ubo.view = glm::lookAt(glm::vec3(0.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    //90deg fov with swapchain aspect ration and near/far plane
+    float aspect = swapchain_data_.extent.width / (float)swapchain_data_.extent.height;
+    ubo.projection = glm::perspective(glm::radians(45.f), aspect, 0.1f, 100.0f);
+
+    // glm is for opengl with an inverted y coordinate system, so we comensate for that
+    ubo.projection[1][1] *= -1;
+
+    memcpy(uniform_mapped_memory_[current_frame], &ubo, sizeof(ubo));
 }
 
 void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysicalDevice device)
@@ -1373,11 +1396,15 @@ VulkanGraphics::VulkanGraphics(BP_Window* window):
     CreateSwapchain(window_data, selected_device_);
     CreateImageViews();
     CreateRenderPass();
+    CreateDescriptorSetLayout();
     CreateGraphicsPipeline();
     CreateFramebuffers();
     CreateCommandPool();
     CreateVertexBuffer();
     CreateIndexBuffer();
+    CreateUniformBuffers();
+    CreateDescriptorPools();
+    CreateDescriptorSets();
     CreateCommandBuffer();
     CreateSyncObjects();
 }

@@ -5,43 +5,11 @@
 
 #include <Windows.h>
 
-#include <optional>
-
 #include "bp_window.h"
 
+#include "vk_helper_functions.h"
+
 const unsigned short MAX_FRAMES_IN_FLIGHT = 2;
-
-// Specifies queue support for a queue family
-struct QueueFamilyIndices {
-    std::optional<uint32_t> graphics_index;
-    std::optional<uint32_t> present_index;
-
-    bool IsComplete() {
-        bool success = graphics_index.has_value();
-        success &= present_index.has_value();
-        return success;
-    }
-};
-
-struct SwapChainDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> present_modes;
-};
-
-struct DeviceQueues {
-    VkQueue graphics_queue;
-    VkQueue present_queue;
-};
-
-struct BP_SwapchainInfo {
-    VkSwapchainKHR swapchain;
-    VkFormat format;
-    VkExtent2D extent;
-    std::vector<VkImage> images;
-    std::vector<VkImageView> image_views;
-    std::vector<VkFramebuffer> framebuffers;
-};
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -112,6 +80,11 @@ class VulkanGraphics {
     VkBuffer index_buffer_;
     VkDeviceMemory index_buffer_memory_;
 
+    std::vector<VkBuffer> uniform_buffers_;
+    std::vector<VkDeviceMemory> uniform_memory_;
+    std::vector<void*> uniform_mapped_memory_;
+    VkDescriptorPool descriptor_pool_;
+    std::vector<VkDescriptorSet> descriptor_sets_;
 
 private:
     bool Initialize();
@@ -144,7 +117,6 @@ public:
 
     bool AreExtensionsAvailable(const std::vector<const char*>& extensions);
 
-
     /*
     * Enumerate all Queue Families to check if the physical device supports the required queue types
     * Currently it's VK_QUEUE_GRAPHICS_BIT
@@ -175,8 +147,6 @@ public:
 
     VkExtent2D GetPreferredSwapchainExtend(const WindowData& window_data, const VkSurfaceCapabilitiesKHR& capabilities);
 
-    uint32_t FindMemoryTypes(uint32_t type_filter, VkMemoryPropertyFlags properties);
-
     bool CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
 
     bool CreateImageViews();
@@ -189,24 +159,28 @@ public:
 
     void CreateFramebuffers();
 
-    void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks* p_allocate_info = nullptr);
-
     void CreateCommandPool();
 
     void CreateVertexBuffer();
 
     void CreateIndexBuffer();
 
+    void CreateUniformBuffers();
+
     void CreateCommandBuffer();
 
-    void Copy_Buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
+    void CreateDescriptorPools();
+    
+    void CreateDescriptorSets();
 
     void RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint32_t img_index);
 
     void CreateSyncObjects();
 
-
     void RenderFrame();
+
+    void UpdateUniformBuffer(uint32_t current_frame);
+
 
     void RecreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
 

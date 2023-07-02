@@ -23,6 +23,10 @@ add_executable(Krakatoa
 	src/vulkan_shader.cpp
 	src/geometry-helpers.h
 	src/geometry-helpers.cpp
+	src/image_loader.h
+	src/image_loader.cpp
+	src/vk_helper_functions.h
+	src/vk_helper_functions.cpp
 )
 
 # Set output name for the addon
@@ -44,3 +48,6 @@ target_include_directories(Krakatoa PRIVATE ${GLFW_INCLUDE_DIR})
 add_subdirectory(third-party/klein)
 target_link_libraries(Krakatoa PRIVATE klein::klein)
 target_include_directories(Krakatoa PRIVATE third-party/klein/public)
+
+set(STB_IMAGE_INCLUDE "C:/libs/stb/include")
+target_include_directories(Krakatoa PRIVATE ${STB_IMAGE_INCLUDE})
