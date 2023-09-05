@@ -63,7 +63,7 @@ public:
 		return stream;
 	}
 
-	Logger() : logTime(false), logDate(false) {
+	Logger() : logTime(false), logDate(false), logLine(0), logFile(false), logColor(DEFAULT) {
 
 	}
 

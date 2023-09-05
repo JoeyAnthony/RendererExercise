@@ -8,6 +8,7 @@
 #include "logger.h"
 #include "vulkan_shader.h"
 #include "geometry-helpers.h"
+#include "image_loader.h"
 
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
@@ -233,6 +234,10 @@ void VulkanGraphics::Edulcorate()
     vkFreeMemory(vulkan_device_, triangle_buffer_memory_, nullptr);
     vkDestroyBuffer(vulkan_device_, index_buffer_, nullptr);
     vkFreeMemory(vulkan_device_, index_buffer_memory_, nullptr);
+
+    // Destroy images
+    vkDestroyImage(vulkan_device_, texture_image_, nullptr);
+    vkFreeMemory(vulkan_device_, texture_image_memory_, nullptr);
 
     // Destroy uniform buffers
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1021,6 +1026,27 @@ void VulkanGraphics::CreateCommandPool()
     }
 }
 
+void VulkanGraphics::CreateTextureImage()
+{
+    // Load image
+    int width, height, channels;
+    VkBuffer image_staging_buffer;
+    VkDeviceMemory image_staging_memory;
+    size_t image_size = LoadTexture(vulkan_device_, selected_device_, image_staging_buffer, image_staging_memory, width, height, channels);
+
+    CreateImage(width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        vulkan_device_, selected_device_, texture_image_, texture_image_memory_);
+
+    VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
+    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    CmdCopyBufferToImage(cmd_buffer, image_staging_buffer, texture_image_, width,height);
+    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
+
+    vkDestroyBuffer(vulkan_device_, image_staging_buffer, nullptr);
+    vkFreeMemory(vulkan_device_, image_staging_memory, nullptr);
+}
+
 void VulkanGraphics::CreateVertexBuffer()
 {
     uint64_t size = sizeof(geometry_triangle_helpers::Vertex) * geometry_triangle_helpers::quad_indices.size();
@@ -1033,7 +1059,7 @@ void VulkanGraphics::CreateVertexBuffer()
 
     // Map buffer memory to cpu accessible memory
     // Then copy vertices for the gpu to load
-    void* data;
+    void* data; 
     vkMapMemory(vulkan_device_, staging_buffer_mem, 0, size, 0, &data);
     memcpy(data, geometry_triangle_helpers::quad_vertices.data(), (size_t)size);
     vkUnmapMemory(vulkan_device_, staging_buffer_mem);
@@ -1043,7 +1069,9 @@ void VulkanGraphics::CreateVertexBuffer()
     CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, triangle_buffer_, triangle_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     // Copy data to local memory
-    Copy_Buffer(vulkan_device_, command_pool_, device_queues_.graphics_queue,staging_buffer, triangle_buffer_, size);
+    VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
+    CmdCopyBuffer(cmd_buffer,staging_buffer, triangle_buffer_, size);
+    EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
 
     // Delete staging buffers
     vkDestroyBuffer(vulkan_device_, staging_buffer, nullptr);
@@ -1068,7 +1096,9 @@ void VulkanGraphics::CreateIndexBuffer()
     // Create index buffer
     CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, index_buffer_, index_buffer_memory_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    Copy_Buffer(vulkan_device_, command_pool_, device_queues_.graphics_queue, staging_buffer, index_buffer_, size);
+    VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
+    CmdCopyBuffer(cmd_buffer, staging_buffer, index_buffer_, size);
+    EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
 
     vkDestroyBuffer(vulkan_device_, staging_buffer, nullptr);
     vkFreeMemory(vulkan_device_, staging_buffer_mem, nullptr);
@@ -1400,6 +1430,7 @@ VulkanGraphics::VulkanGraphics(BP_Window* window):
     CreateGraphicsPipeline();
     CreateFramebuffers();
     CreateCommandPool();
+    CreateTextureImage();
     CreateVertexBuffer();
     CreateIndexBuffer();
     CreateUniformBuffers();

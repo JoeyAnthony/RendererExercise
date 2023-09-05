@@ -86,6 +86,11 @@ class VulkanGraphics {
     VkDescriptorPool descriptor_pool_;
     std::vector<VkDescriptorSet> descriptor_sets_;
 
+    VkImage texture_image_;
+    VkDeviceMemory texture_image_memory_;
+
+    VkImageView texture_image_view_;
+
 private:
     bool Initialize();
     void SetValidationLayers(VkInstanceCreateInfo& create_info);
@@ -160,6 +165,8 @@ public:
     void CreateFramebuffers();
 
     void CreateCommandPool();
+
+    void CreateTextureImage();
 
     void CreateVertexBuffer();
 
