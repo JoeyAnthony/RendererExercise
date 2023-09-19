@@ -16,6 +16,7 @@ namespace geometry_triangle_helpers {
 	struct Vertex {
 		glm::vec3 position;
 		glm::vec3 color;
+		glm::vec2 texcoord;
 	};
 
 	const std::vector<uint16_t> quad_indices{
@@ -27,17 +28,17 @@ namespace geometry_triangle_helpers {
 	};
 
 	const std::vector<Vertex> quad_vertices{
-		{{ 1.0f, -1.0f, 0.0f}, { 1.0f, 0.5f, 0.0f }},
-		{{ -1.0f, -1.0f, 0.0f}, { 1.0f, 0.5f, 0.0f }},
-		{{ 1.0f, 1.0f, 0.0f }, {0.0f, 1.f, 0.3f }},
-		{{ -1.0f, 1.0f, 0.0f }, {0.1f, 0.0f, 1.0f }}
+		{{  1.0f, -1.0f, 0.0f }, { 1.0f, 0.5f, 0.0f }, { 1.0f, 0.0f }},
+		{{ -1.0f, -1.0f, 0.0f }, { 1.0f, 0.5f, 0.0f }, { 0.0f, 0.0f }},
+		{{  1.0f,  1.0f, 0.0f }, { 0.0f, 1.0f, 0.3f }, { 1.0f, 1.0f }},
+		{{ -1.0f,  1.0f, 0.0f }, { 0.1f, 0.0f, 1.0f }, { 0.0f, 1.0f }}
 	};
 
 	const std::vector<Vertex> vertices = {
-	{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-	{{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-	{{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}
+	{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0,0}},
+	{{ 0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1,0}},
+	{{ 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1,1}},
+	{{-0.5f,  0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0,1	}}
 	};
 
 	const std::vector<Vertex> triangle_vertices{
@@ -48,5 +49,5 @@ namespace geometry_triangle_helpers {
 
 	VkVertexInputBindingDescription GetVertexBindingDescription();
 
-	std::array<VkVertexInputAttributeDescription, 2> GetVertexAttributeDescription();
+	std::array<VkVertexInputAttributeDescription, 3> GetVertexAttributeDescription();
 };

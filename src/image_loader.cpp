@@ -31,3 +31,39 @@ size_t LoadTexture(const VkDevice& vulkan_device, const VkPhysicalDevice& select
 
 	return image_size;
 }
+
+VkImageView CreateImageView(VkDevice vulkan_device, VkImage image, VkFormat format, VkImageViewType view_type,
+	const VkImageSubresourceRange* sub_resource_range)
+{
+	VkImageViewCreateInfo create_info{};
+	create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	create_info.image = image;
+	create_info.format = format;
+	create_info.viewType = view_type;
+	
+	// Don't have to set these here, they are defined as 0 by default
+	//create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	//create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	//create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	//create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+	if (sub_resource_range == nullptr) {
+		create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		create_info.subresourceRange.baseArrayLayer = 0;
+		create_info.subresourceRange.baseMipLevel = 0;
+		create_info.subresourceRange.layerCount = 1;
+		create_info.subresourceRange.levelCount = 1;
+	}
+	else
+	{
+		create_info.subresourceRange = *sub_resource_range;
+	}
+
+	VkImageView image_view;
+	VkResult res = vkCreateImageView(vulkan_device, &create_info, nullptr, &image_view);
+	if (res != VK_SUCCESS) {
+		LOG << "FAILURE\t Failed create texture image view: " << res;
+	}
+
+	return image_view;
+}

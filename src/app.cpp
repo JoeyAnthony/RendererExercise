@@ -18,8 +18,8 @@ void GraphicsApplication::Initialize()
 
 void GraphicsApplication::Edulcorate()
 {
-	delete app_window;
 	delete graphics;
+	delete app_window;
 }
 
 void GraphicsApplication::Run()

@@ -11,7 +11,7 @@ VkVertexInputBindingDescription geometry_triangle_helpers::GetVertexBindingDescr
 	return desc;
 }
 
-std::array<VkVertexInputAttributeDescription, 2> geometry_triangle_helpers::GetVertexAttributeDescription()
+std::array<VkVertexInputAttributeDescription, 3> geometry_triangle_helpers::GetVertexAttributeDescription()
 {
 	VkVertexInputAttributeDescription desc_1{};
 	desc_1.binding = 0;
@@ -25,5 +25,11 @@ std::array<VkVertexInputAttributeDescription, 2> geometry_triangle_helpers::GetV
 	desc_2.offset = offsetof(Vertex, color);
 	desc_2.format = VK_FORMAT_R32G32B32_SFLOAT;
 
-	return std::array<VkVertexInputAttributeDescription, 2>{desc_1, desc_2};
+	VkVertexInputAttributeDescription desc_3{};
+	desc_3.binding = 0;
+	desc_3.location = 2;
+	desc_3.offset = offsetof(Vertex, texcoord);
+	desc_3.format = VK_FORMAT_R32G32_SFLOAT;
+
+	return std::array<VkVertexInputAttributeDescription, 3>{desc_1, desc_2, desc_3};
 }

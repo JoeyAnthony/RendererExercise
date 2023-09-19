@@ -235,6 +235,10 @@ void VulkanGraphics::Edulcorate()
     vkDestroyBuffer(vulkan_device_, index_buffer_, nullptr);
     vkFreeMemory(vulkan_device_, index_buffer_memory_, nullptr);
 
+    // Destroy image samplers
+    vkDestroySampler(vulkan_device_, texture_sampler_,nullptr);
+    // Destroy image views
+    vkDestroyImageView(vulkan_device_, texture_image_view_, nullptr);
     // Destroy images
     vkDestroyImage(vulkan_device_, texture_image_, nullptr);
     vkFreeMemory(vulkan_device_, texture_image_memory_, nullptr);
@@ -250,10 +254,11 @@ void VulkanGraphics::Edulcorate()
     // Destroy unform buffer shader layout
     vkDestroyDescriptorSetLayout(vulkan_device_, descriptor_set_layout_, nullptr);
 
+    vkDeviceWaitIdle(vulkan_device_);
+
     vkDestroyDevice(vulkan_device_, nullptr);
     vkDestroyInstance(instance_, nullptr);
 
-    vkDeviceWaitIdle(vulkan_device_);
 }
 
 void VulkanGraphics::CreateVulkanSurface(const WindowData& window_data)
@@ -696,37 +701,23 @@ bool VulkanGraphics::CreateSwapchain(const WindowData& window_data, VkPhysicalDe
 
 bool VulkanGraphics::CreateImageViews()
 {
-    // For 3D and multiple swapchain image layers, view would have to be created for each layer as well
-    uint32_t count = swapchain_data_.images.size();
-    swapchain_data_.image_views.resize(count);
-    uint32_t success = 0;
-    for (int i = 0; i < count; i++) {
-        VkImageViewCreateInfo create_info{};
-        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        create_info.image = swapchain_data_.images[i];
-        create_info.format = swapchain_data_.format;
-        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	// For 3D and multiple swapchain image layers, view would have to be created for each layer as well
+	uint32_t count = swapchain_data_.images.size();
+	swapchain_data_.image_views.resize(count);
+	uint32_t success = 0;
+	for (int i = 0; i < count; i++) {
 
-        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		swapchain_data_.image_views[i] = CreateImageView(vulkan_device_, swapchain_data_.images[i], swapchain_data_.format);
 
-        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        create_info.subresourceRange.baseArrayLayer = 0;
-        create_info.subresourceRange.baseMipLevel = 0;
-        create_info.subresourceRange.layerCount = 1;
-        create_info.subresourceRange.levelCount = 1;
-        
-        if (vkCreateImageView(vulkan_device_, &create_info, nullptr, &swapchain_data_.image_views[i]) == VK_SUCCESS) {
-            success++;
-        }
-        else {
-            LOG << "FAILURE\t Failed creatim image view";
-        }
-    }
+		if (swapchain_data_.image_views[i] != VK_NULL_HANDLE) {
+			success++;
+		}
+		else {
+			LOG << "FAILURE\t Failed creating image view";
+		}
+	}
 
-    return success == count;
+	return success == count;
 }
 
 void VulkanGraphics::CreateRenderPass() {
@@ -793,20 +784,32 @@ void VulkanGraphics::CreateRenderPass() {
 
 void VulkanGraphics::CreateDescriptorSetLayout()
 {
-    // Tell the shader what type of object it can access, it's binding position and in which shader stage
-    // In this case it's a uniform buffer
-    VkDescriptorSetLayoutBinding layout{};
-    layout.binding = 0;
-    layout.descriptorCount = 1;
-    layout.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    layout.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    layout.pImmutableSamplers = nullptr;
+    // A descriptor set layout let's a shader access certain data.
+    // It can contain multiple bindings with different types of data in each binding.
+    // In the shader, these bindings are then explicitly declared as well.
 
-    // Create info holds a list of descriptor layouts
+    // Tell the shader what type of object it can access, it's binding position and in which shader stage
+    // In this case it's a uniform buffer and combined image sampler
+    VkDescriptorSetLayoutBinding binding0{};
+    binding0.binding = 0;
+    binding0.descriptorCount = 1;
+    binding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    binding0.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    binding0.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutBinding binding1{};
+    binding1.binding = 1;
+    binding1.descriptorCount = 1;
+    binding1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    binding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    binding1.pImmutableSamplers = nullptr;
+
+    // Create info holds a list of layout bindings
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings { binding0, binding1 };
     VkDescriptorSetLayoutCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    create_info.bindingCount = 1;
-    create_info.pBindings = &layout;
+    create_info.bindingCount = static_cast<uint32_t>( bindings.size());
+    create_info.pBindings = bindings.data();
 
     VkResult res = vkCreateDescriptorSetLayout(vulkan_device_, &create_info, nullptr, &descriptor_set_layout_);
     if (res != VK_SUCCESS) {
@@ -1047,6 +1050,50 @@ void VulkanGraphics::CreateTextureImage()
     vkFreeMemory(vulkan_device_, image_staging_memory, nullptr);
 }
 
+void VulkanGraphics::CreateTextureImageViews()
+{
+    texture_image_view_ = CreateImageView(vulkan_device_, texture_image_);
+}
+
+void VulkanGraphics::CreateTextureSampler()
+{
+    VkPhysicalDeviceProperties device_properties;
+    vkGetPhysicalDeviceProperties(selected_device_, &device_properties);
+
+    VkSamplerCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+
+    // Sampler operation, linear interpolation between pixels for smoother/blurrier images
+    info.minFilter = VK_FILTER_LINEAR;
+    info.magFilter = VK_FILTER_LINEAR;
+
+    // What should happen when sampling outside of the texture corrdinates
+    info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+    info.maxAnisotropy = device_properties.limits.maxSamplerAnisotropy; // Sharpening image filtering. Especially with patterns/tiles in the distance
+    info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK; // Border color when Address mode is CLAMP TO BORDER
+    info.unnormalizedCoordinates = VK_FALSE; // Use amount of xy pixels or 0 to 1 as texture coordinates
+
+    // If a comparison function is enabled, then texels will first be compared to a value, and the result of that comparison is used in filtering operations
+    info.compareEnable = VK_FALSE;
+    info.compareOp = VK_COMPARE_OP_ALWAYS;
+
+    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    info.mipLodBias = 0.0f;
+    info.minLod = 0.0f;
+    info.maxLod = 0.0f;
+
+    VkResult res = vkCreateSampler(vulkan_device_, &info, nullptr, &texture_sampler_);
+    if (res == VK_SUCCESS) {
+        LOG << "SUCCESS\t Created framebuffer";
+    }
+    else {
+        LOG << "FAILURE\t Could not create framebuffer error " << res;
+    }
+}
+
 void VulkanGraphics::CreateVertexBuffer()
 {
     uint64_t size = sizeof(geometry_triangle_helpers::Vertex) * geometry_triangle_helpers::quad_indices.size();
@@ -1135,14 +1182,20 @@ void VulkanGraphics::CreateCommandBuffer()
 
 void VulkanGraphics::CreateDescriptorPools()
 {
-    VkDescriptorPoolSize poolsize{};
-    poolsize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolsize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    VkDescriptorPoolSize ubo_pool_size{};
+    ubo_pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_pool_size.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolSize sampler_pool_size{};
+    sampler_pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    sampler_pool_size.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    std::array<VkDescriptorPoolSize, 2> pool_sizes = { ubo_pool_size, sampler_pool_size };
 
     VkDescriptorPoolCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    info.poolSizeCount = 1;
-    info.pPoolSizes = &poolsize;
+    info.poolSizeCount = pool_sizes.size();
+    info.pPoolSizes = pool_sizes.data();
     info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     VkResult res = vkCreateDescriptorPool(vulkan_device_, &info, nullptr, &descriptor_pool_);
@@ -1165,33 +1218,53 @@ void VulkanGraphics::CreateDescriptorSets()
     descriptor_sets_.resize(MAX_FRAMES_IN_FLIGHT);
     VkResult res = vkAllocateDescriptorSets(vulkan_device_, &alloc_info, descriptor_sets_.data());
     if (res != VK_SUCCESS) {
-        LOG << "FAILURE\t Failed creatinf descriptor sets, error:" << res;
+        LOG << "FAILURE\t Failed creating descriptor sets, error:" << res;
     }
 
-    // Configure descriptors by binding the uniform buffers
-    // Could use arrays of descriptor sets as well instead of this loop configuring them one by one
+    // Update every descriptor inside a descriptor set with write structs
+    // This must be done for every descriptor set
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		std::array<VkWriteDescriptorSet, 2> descriptor_writes;
+
         VkDescriptorBufferInfo buffer_info{};
         buffer_info.buffer = uniform_buffers_[i];
         buffer_info.offset = 0;
         buffer_info.range = sizeof(UniformBufferObject);
 
-		// Update the desciptor set configurations
-		VkWriteDescriptorSet write{};
-		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = descriptor_sets_[i];
-        write.dstBinding = 0;
-        write.dstArrayElement = 0;
-        
-        write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        write.descriptorCount = 1;
+        VkDescriptorImageInfo image_info{};
+        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        image_info.imageView = texture_image_view_;
+        image_info.sampler = texture_sampler_;
 
-        write.pBufferInfo = &buffer_info;
-        // Depends on what type of buffers that are being used
-        write.pImageInfo = nullptr; // Optional
-        write.pTexelBufferView = nullptr; // Optional
+		// Update UBO descriptor
+        descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_writes[0].dstSet = descriptor_sets_[i]; // Update the descriptor set here
+        descriptor_writes[0].dstBinding = 0;
+        descriptor_writes[0].dstArrayElement = 0;
 
-        vkUpdateDescriptorSets(vulkan_device_, 1, &write, 0, nullptr);
+        descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptor_writes[0].descriptorCount = 1;
+
+        descriptor_writes[0].pBufferInfo = &buffer_info; // Update UBO buffer descriptor
+        descriptor_writes[0].pImageInfo = nullptr; // Update Image buffer descriptor
+        descriptor_writes[0].pTexelBufferView = nullptr; // Update texel buffer descriptor
+        descriptor_writes[0].pNext = nullptr;
+
+        // Update image descriptor
+        descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_writes[1].dstSet = descriptor_sets_[i]; // Update the descriptor set here
+        descriptor_writes[1].dstBinding = 1;
+        descriptor_writes[1].dstArrayElement = 0;
+
+        descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptor_writes[1].descriptorCount = 1;
+
+        descriptor_writes[1].pBufferInfo = nullptr; // Update UBO buffer descriptor
+        descriptor_writes[1].pImageInfo = &image_info; // Update Image buffer descriptor
+        descriptor_writes[1].pTexelBufferView = nullptr; // Update texel buffer descriptor
+        descriptor_writes[1].pNext = nullptr;
+
+        vkUpdateDescriptorSets(vulkan_device_, descriptor_writes.size(), descriptor_writes.data(), 0, nullptr);
 	}
 }
 
@@ -1360,7 +1433,7 @@ void VulkanGraphics::UpdateUniformBuffer(uint32_t current_frame)
     static auto start_time = std::chrono::high_resolution_clock::now();
 
     auto current_time = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+    float time = 0;// std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
     UniformBufferObject ubo{};
     // rotate over z
@@ -1431,6 +1504,8 @@ VulkanGraphics::VulkanGraphics(BP_Window* window):
     CreateFramebuffers();
     CreateCommandPool();
     CreateTextureImage();
+    CreateTextureImageViews();
+    CreateTextureSampler();
     CreateVertexBuffer();
     CreateIndexBuffer();
     CreateUniformBuffers();

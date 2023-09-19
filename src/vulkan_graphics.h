@@ -90,6 +90,7 @@ class VulkanGraphics {
     VkDeviceMemory texture_image_memory_;
 
     VkImageView texture_image_view_;
+    VkSampler texture_sampler_;
 
 private:
     bool Initialize();
@@ -167,6 +168,10 @@ public:
     void CreateCommandPool();
 
     void CreateTextureImage();
+
+    void CreateTextureImageViews();
+
+    void CreateTextureSampler();
 
     void CreateVertexBuffer();
 

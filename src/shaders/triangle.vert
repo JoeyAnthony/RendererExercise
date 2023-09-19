@@ -16,9 +16,12 @@ vec3 colors[3] = vec3[3](
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec2 in_texcoord;
 layout(location = 0) out vec3 vert_color;
+layout(location = 1) out vec2 vert_texcoord;
 
 void main(){
     gl_Position = ubo.projection * ubo.view * ubo.model * vec4(in_position, 1.0);
     vert_color = in_color;
+    vert_texcoord = in_texcoord;
 }
