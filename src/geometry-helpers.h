@@ -6,9 +6,15 @@
 #include <array>
 
 struct UniformBufferObject {
-	glm::mat4 model;
 	glm::mat4 view;
 	glm::mat4 projection;
+	glm::mat4 view_projection;
+};
+
+struct MeshPushConstants
+{
+	glm::vec4 data;
+	glm::mat4 transform;
 };
 
 namespace geometry_triangle_helpers {
@@ -50,4 +56,24 @@ namespace geometry_triangle_helpers {
 	VkVertexInputBindingDescription GetVertexBindingDescription();
 
 	std::array<VkVertexInputAttributeDescription, 3> GetVertexAttributeDescription();
-};
+
+}
+
+namespace VEngine {
+	struct Model3D
+	{
+		VkBuffer gpu_buffer;
+		VkDeviceMemory gpu_memory;
+		//std::vector<VkBuffer> ubo_buffer;
+		//std::vector<VkDeviceMemory> ubo_memory;
+		//std::vector<void*> ubo_mapped_memory;
+		VkPipeline pipeline;
+		uint32_t index_offset;
+	};
+
+	Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<geometry_triangle_helpers::Vertex>& vertices,
+		const std::vector<uint16_t>& indices);
+
+	// Does not destroy uthe pipeline object
+	void DestroyModel(VkDevice device, Model3D* model);
+}

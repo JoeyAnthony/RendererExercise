@@ -52,6 +52,30 @@ void CreateBuffer(VkDevice vulkan_device, VkPhysicalDevice selected_device, VkDe
     vkBindBufferMemory(vulkan_device, buffer, memory, 0);
 }
 
+void AllocateGPUMemory(VkDevice vulkan_device, VkPhysicalDevice selected_device, VkBuffer buffer, VkDeviceSize size, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks* p_allocate_info)
+{
+    // Get memory requirements
+    VkMemoryRequirements mem_requirements{};
+    vkGetBufferMemoryRequirements(vulkan_device, buffer, &mem_requirements);
+
+    // Allocate memory for the buffer
+    VkMemoryAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = FindMemoryTypes(selected_device, mem_requirements.memoryTypeBits, memory_properties);
+
+    VkResult res = vkAllocateMemory(vulkan_device, &alloc_info, p_allocate_info, &memory);
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Failed to allocate buffer memory";
+        return;
+    }
+}
+
+bool FormatHasStencilComponent(VkFormat format)
+{
+    return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D16_UNORM_S8_UINT;
+}
+
 void CmdCopyBuffer(VkCommandBuffer cmd_buffer, VkBuffer src, VkBuffer dst, VkDeviceSize size)
 {
     VkBufferCopy copy_region{};
@@ -112,21 +136,38 @@ void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkForma
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = old_layout;
     barrier.newLayout = new_layout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // Ignored because we usually don't want to change the queue family
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.baseMipLevel = 0;  // Offset of the mipmap levels
+    barrier.subresourceRange.levelCount = 1;    // Amount of mipmap levels to change
+    barrier.subresourceRange.baseArrayLayer = 0;// Offset of the array
+    barrier.subresourceRange.layerCount = 1;    // Amount of layers to change in the array
 
+    // Pipeline stage usage before and after. So which stages of the pipeline was it used and in which is the new one?
     VkPipelineStageFlags stage_before = 0;
     VkPipelineStageFlags stage_after = 0;
+    if(new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+    {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if(FormatHasStencilComponent(format))
+        {
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+    }
+    else
+    {
+        // Put it to color aspect mask like at the top of the function
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+
     if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        //
         stage_before = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         stage_after = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
+        // Sets which attachment the render pass should access
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     }
@@ -137,10 +178,25 @@ void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkForma
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     }
+    else if(old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+    {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        // Add stencil component if the format has one
+        if(FormatHasStencilComponent(format))
+        {
+            barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+
+        stage_before = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        stage_after = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    }
 
     vkCmdPipelineBarrier(cmd_buffer,
-        stage_before,     // Before and after pipeline stages
-        stage_after,    // Per region condition
+        stage_before,     // All stages before this stage has to execute
+        stage_after,    // All work after this stage has to wait
         0,
         0, nullptr, // Memory Barriers
         0, nullptr, // Buffer Memory Barriers

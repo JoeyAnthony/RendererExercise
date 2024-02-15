@@ -49,3 +49,7 @@ void CmdCopyBufferToImage(VkCommandBuffer cmd_buffer, VkBuffer src, VkImage dst,
 
 VkCommandBuffer BeginSingleTimeCommandBuffer(VkDevice vulkan_device, VkCommandPool cmd_pool);
 void EndSingleTimeCommandBuffer(VkDevice vulkan_device, VkQueue graphics_queue, VkCommandPool cmd_pool, const VkCommandBuffer& cmd_buffer);
+
+void AllocateGPUMemory(VkDevice vulkan_device, VkPhysicalDevice selected_device, VkBuffer buffer, VkDeviceSize size, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks* p_allocate_info);
+
+bool FormatHasStencilComponent(VkFormat format);

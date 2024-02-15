@@ -4,10 +4,12 @@
 #include <vulkan/vulkan_structs.hpp>
 
 #include <Windows.h>
+#include <glm/fwd.hpp>
 
 #include "bp_window.h"
 
 #include "vk_helper_functions.h"
+#include "geometry-helpers.h"
 
 const unsigned short MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -58,12 +60,18 @@ class VulkanGraphics {
     VkPipeline pipeline_;
 
     // Validation layers used in this application
-    const std::vector<const char*> validation_layers_ = { "VK_LAYER_KHRONOS_validation"/*, "VK_LAYER_LUNARG_api_dump"*/};
+    const std::vector<const char*> validation_layers_ = { "VK_LAYER_KHRONOS_validation"/*, "VK_LAYER_LUNARG_api_dump"*/ };
     // Required device extensions
     const std::vector<const char*> required_device_extensions_ = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME, "VK_KHR_external_memory_win32", VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME, "VK_KHR_external_semaphore_win32", VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME };
 
     BP_SwapchainInfo swapchain_data_;
     VkCommandPool command_pool_;
+
+    // Scene objects
+    std::vector<VEngine::Model3D> models;
+    std::vector<MeshPushConstants> transforms;
+    VkBuffer object_transforms_ubo;
+    //VkDeviceMemory scene_memory; // scene_data + object_transforms
 
     // Per in-flight frames
     uint32_t current_frame_ = 0;
@@ -71,26 +79,25 @@ class VulkanGraphics {
     std::vector<VkSemaphore> sem_image_available_;
     std::vector<VkSemaphore> sem_render_finished_;
     std::vector<VkFence> fence_in_flight_;
+    std::vector<VkBuffer> uniform_buffers_;
+    std::vector<VkDeviceMemory> uniform_memory_;
+    std::vector<void*> uniform_mapped_memory_;
+    // ~Scene objects
 
     bool resize_necessary_ = false;
     uint32_t win_width_ = 600, win_height_ = 600;
 
-    VkBuffer triangle_buffer_;
-    VkDeviceMemory triangle_buffer_memory_;
-    VkBuffer index_buffer_;
-    VkDeviceMemory index_buffer_memory_;
-
-    std::vector<VkBuffer> uniform_buffers_;
-    std::vector<VkDeviceMemory> uniform_memory_;
-    std::vector<void*> uniform_mapped_memory_;
     VkDescriptorPool descriptor_pool_;
     std::vector<VkDescriptorSet> descriptor_sets_;
 
     VkImage texture_image_;
     VkDeviceMemory texture_image_memory_;
-
     VkImageView texture_image_view_;
     VkSampler texture_sampler_;
+
+    VkImage depth_image_;
+    VkDeviceMemory depth_image_memory_;
+    VkImageView depth_image_view_;
 
 private:
     bool Initialize();
@@ -104,7 +111,7 @@ private:
 
     void CreateLogicalDevice();
 
-    
+
 public:
     void ResizeBuffer(uint32_t width, uint32_t height);
 
@@ -153,6 +160,11 @@ public:
 
     VkExtent2D GetPreferredSwapchainExtend(const WindowData& window_data, const VkSurfaceCapabilitiesKHR& capabilities);
 
+    // Return VK_FORMAT_UNDEFINED if not supported format could be found
+    VkFormat FindSupportedFormat(const std::vector<VkFormat> candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+
+    VkFormat FindDepthFormat();
+
     bool CreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
 
     bool CreateImageViews();
@@ -163,9 +175,11 @@ public:
 
     void CreateGraphicsPipeline();
 
-    void CreateFramebuffers();
-
     void CreateCommandPool();
+
+    void CreateDepthResources();
+
+    void CreateFramebuffers();
 
     void CreateTextureImage();
 
@@ -173,16 +187,12 @@ public:
 
     void CreateTextureSampler();
 
-    void CreateVertexBuffer();
-
-    void CreateIndexBuffer();
-
     void CreateUniformBuffers();
 
     void CreateCommandBuffer();
 
     void CreateDescriptorPools();
-    
+
     void CreateDescriptorSets();
 
     void RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint32_t img_index);
@@ -195,6 +205,15 @@ public:
 
 
     void RecreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
+
+
+
+    //---------------------
+
+
+    void InitializeScene();
+    void InitializeModels();
+    void UpdateScene();
 
     VulkanGraphics(BP_Window* window);
     ~VulkanGraphics();

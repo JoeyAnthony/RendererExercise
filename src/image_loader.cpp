@@ -32,8 +32,7 @@ size_t LoadTexture(const VkDevice& vulkan_device, const VkPhysicalDevice& select
 	return image_size;
 }
 
-VkImageView CreateImageView(VkDevice vulkan_device, VkImage image, VkFormat format, VkImageViewType view_type,
-	const VkImageSubresourceRange* sub_resource_range)
+VkImageView CreateImageView(VkDevice vulkan_device, VkImage image, VkFormat format, VkImageViewType view_type, VkImageAspectFlags aspect_flags)
 {
 	VkImageViewCreateInfo create_info{};
 	create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -47,17 +46,11 @@ VkImageView CreateImageView(VkDevice vulkan_device, VkImage image, VkFormat form
 	//create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
 	//create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
-	if (sub_resource_range == nullptr) {
-		create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		create_info.subresourceRange.baseArrayLayer = 0;
-		create_info.subresourceRange.baseMipLevel = 0;
-		create_info.subresourceRange.layerCount = 1;
-		create_info.subresourceRange.levelCount = 1;
-	}
-	else
-	{
-		create_info.subresourceRange = *sub_resource_range;
-	}
+    create_info.subresourceRange.aspectMask = aspect_flags;
+    create_info.subresourceRange.baseArrayLayer = 0;
+    create_info.subresourceRange.baseMipLevel = 0;
+    create_info.subresourceRange.layerCount = 1;
+    create_info.subresourceRange.levelCount = 1;
 
 	VkImageView image_view;
 	VkResult res = vkCreateImageView(vulkan_device, &create_info, nullptr, &image_view);

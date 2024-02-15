@@ -27,6 +27,8 @@ add_executable(Krakatoa
 	src/image_loader.cpp
 	src/vk_helper_functions.h
 	src/vk_helper_functions.cpp
+	src/scene_objects.h
+	src/scene_objects.cpp
 )
 
 # Set output name for the addon
