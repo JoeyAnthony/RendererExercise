@@ -31,6 +31,11 @@ add_executable(Krakatoa
 	src/scene_objects.cpp
 )
 
+# add dependencies
+include(cmake/CPM.cmake)
+
+CPMAddPackage("gh:tinyobjloader/tinyobjloader@1.0.6")
+
 # Set output name for the addon
 set(ADDON_FILE_NAME "Krakatoa")
 set_target_properties(Krakatoa PROPERTIES OUTPUT_NAME ${ADDON_FILE_NAME})
@@ -50,6 +55,8 @@ target_include_directories(Krakatoa PRIVATE ${GLFW_INCLUDE_DIR})
 add_subdirectory(third-party/klein)
 target_link_libraries(Krakatoa PRIVATE klein::klein)
 target_include_directories(Krakatoa PRIVATE third-party/klein/public)
+
+target_link_libraries(Krakatoa PRIVATE tinyobjloader)
 
 set(STB_IMAGE_INCLUDE "C:/libs/stb/include")
 target_include_directories(Krakatoa PRIVATE ${STB_IMAGE_INCLUDE})

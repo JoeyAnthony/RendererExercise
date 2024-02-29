@@ -5,6 +5,9 @@
 #include <vector>
 #include <array>
 
+constexpr std::string VIKING_ROOM_M = "./models/viking_room.obj";
+constexpr std::string VIKING_ROOM_T = "./models/viking_room.obj";
+
 struct UniformBufferObject {
 	glm::mat4 view;
 	glm::mat4 projection;
@@ -17,7 +20,7 @@ struct MeshPushConstants
 	glm::mat4 transform;
 };
 
-namespace geometry_triangle_helpers {
+namespace backpack {
 
 	struct Vertex {
 		glm::vec3 position;
@@ -59,21 +62,37 @@ namespace geometry_triangle_helpers {
 
 }
 
-namespace VEngine {
+namespace backpack {
 	struct Model3D
 	{
 		VkBuffer gpu_buffer;
 		VkDeviceMemory gpu_memory;
+		VkPipeline pipeline;
+		uint32_t index_offset;
 		//std::vector<VkBuffer> ubo_buffer;
 		//std::vector<VkDeviceMemory> ubo_memory;
 		//std::vector<void*> ubo_mapped_memory;
-		VkPipeline pipeline;
-		uint32_t index_offset;
 	};
 
-	Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<geometry_triangle_helpers::Vertex>& vertices,
-		const std::vector<uint16_t>& indices);
+	struct ModePacked
+	{
+		// 
+		float data[3][3];
+	};
+
+	struct Model3DLoadData
+	{
+		std::vector<Vertex> vertices;
+		std::vector<uint32_t> indices;
+	};
+
+	Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<geometry_triangle_helpers::Vertex>& vertices, const std::vector<uint16_t>& indices);
 
 	// Does not destroy uthe pipeline object
 	void DestroyModel(VkDevice device, Model3D* model);
+
+	class ModelLoader {
+		void LoadModels(std::vector<std::string> paths);
+		void LoadModelsToGPU(std::vector<Model3DLoadData> model_data);
+	};
 }

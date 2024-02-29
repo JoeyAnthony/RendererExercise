@@ -3,7 +3,10 @@
 #include "logger.h"
 #include "vk_helper_functions.h"
 
-namespace geometry_triangle_helpers {
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
+
+namespace backpack {
 
     VkVertexInputBindingDescription GetVertexBindingDescription() {
         // How the vertex data is passed. So through index 0 in the binding array of the pipeline, how large the vertex is and how it should be processed.
@@ -39,10 +42,9 @@ namespace geometry_triangle_helpers {
 
 }
 
-namespace VEngine {
-    Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<geometry_triangle_helpers::Vertex>& vertices,
-        const std::vector<uint16_t>& indices) {
-        VkDeviceSize vertices_size = sizeof(geometry_triangle_helpers::Vertex) * vertices.size();
+namespace backpack {
+    Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<backpack::Vertex>& vertices, const std::vector<uint16_t>& indices) {
+        VkDeviceSize vertices_size = sizeof(backpack::Vertex) * vertices.size();
         VkDeviceSize indices_size = sizeof(uint16_t) * indices.size();
 
         Model3D model{};
@@ -107,5 +109,24 @@ namespace VEngine {
             vkFreeMemory(device, model->gpu_memory, nullptr);
             model->gpu_memory = VK_NULL_HANDLE;
         }
+    }
+
+    void ModelLoader::LoadModels(std::vector<std::string> paths)
+    {
+        tinyobj::attrib_t attributes;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+
+        std::string err;
+        tinyobj::LoadObj(&attributes, &shapes, &materials, &err, VIKING_ROOM_M.c_str());
+
+        for(auto& shape: shapes)
+        {
+            shape.mesh.
+        }
+    }
+
+    void ModelLoader::LoadModelsToGPU(std::vector<Model3DLoadData> model_data)
+    {
     }
 }

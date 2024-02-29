@@ -252,7 +252,7 @@ void VulkanGraphics::Edulcorate() {
     // TODO Resource manager that tracks handles
     //for (int i = 0; i < models.size(); i++) {
     // Only destroy one time since all models share the same buffer and emmory handles
-    VEngine::DestroyModel(vulkan_device_, &models[0]);
+    backpack::DestroyModel(vulkan_device_, &models[0]);
     //}
 
     vkDestroyCommandPool(vulkan_device_, command_pool_, nullptr);
@@ -871,8 +871,8 @@ void VulkanGraphics::CreateGraphicsPipeline() {
     VkPipelineShaderStageCreateInfo shader_stages[]{ vertex_pipeline, fragment_pipeline };
 
     // Create Vertex input pipeline state
-    VkVertexInputBindingDescription binding_desc = geometry_triangle_helpers::GetVertexBindingDescription();
-    auto attribute_desc_array = geometry_triangle_helpers::GetVertexAttributeDescription();
+    VkVertexInputBindingDescription binding_desc = backpack::GetVertexBindingDescription();
+    auto attribute_desc_array = backpack::GetVertexAttributeDescription();
 
     VkPipelineVertexInputStateCreateInfo vertex_input_pipeline_state{};
     vertex_input_pipeline_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -1334,10 +1334,10 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
         VkDeviceSize offsets[] = { 0 };
         std::array<VkDescriptorSet, 1> descriptor_sets{ descriptor_sets_[current_frame_] };
         vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(cmd_buffer, models[i].gpu_buffer, models[i].index_offset, VK_INDEX_TYPE_UINT16);
+        vkCmdBindIndexBuffer(cmd_buffer, models[i].gpu_buffer, models[i].index_offset, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, descriptor_sets.size(), descriptor_sets.data(), 0, nullptr);
         vkCmdPushConstants(cmd_buffer, pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &transforms[i]);
-        vkCmdDrawIndexed(cmd_buffer, geometry_triangle_helpers::quad_indices.size(), 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd_buffer, backpack::quad_indices.size(), 1, 0, 0, 0);
     }
 
     // End render pass
@@ -1508,10 +1508,10 @@ void VulkanGraphics::InitializeScene() {
 }
 
 void VulkanGraphics::InitializeModels() {
-    VEngine::Model3D model;
-    auto vertices = geometry_triangle_helpers::quad_vertices;
-    auto indices = geometry_triangle_helpers::quad_indices;
-    model = VEngine::LoadSingleModel3D(vulkan_device_, selected_device_, command_pool_, device_queues_.graphics_queue, MAX_FRAMES_IN_FLIGHT, vertices, indices);
+    backpack::Model3D model;
+    auto vertices = backpack::quad_vertices;
+    auto indices = backpack::quad_indices;
+    model = backpack::LoadSingleModel3D(vulkan_device_, selected_device_, command_pool_, device_queues_.graphics_queue, MAX_FRAMES_IN_FLIGHT, vertices, indices);
     models.push_back(model);
     models.push_back(model);
     transforms.push_back(MeshPushConstants{ glm::vec4{0.0f}, glm::mat4{1.0f} });
