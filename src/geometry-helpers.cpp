@@ -111,8 +111,7 @@ namespace backpack {
         }
     }
 
-    void ModelLoader::LoadModels(std::vector<std::string> paths)
-    {
+    ModelPacked ModelLoader::LoadModels(std::vector<std::string> paths) {
         tinyobj::attrib_t attributes;
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
@@ -120,13 +119,13 @@ namespace backpack {
         std::string err;
         tinyobj::LoadObj(&attributes, &shapes, &materials, &err, VIKING_ROOM_M.c_str());
 
-        for(auto& shape: shapes)
-        {
+        ModelPacked
+        for (auto& shape : shapes) {
             shape.mesh.
         }
+
     }
 
-    void ModelLoader::LoadModelsToGPU(std::vector<Model3DLoadData> model_data)
-    {
+    void ModelLoader::LoadModelsToGPU(std::vector<ModelPacked> model_data) {
     }
 }
