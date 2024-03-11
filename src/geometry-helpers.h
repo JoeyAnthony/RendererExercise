@@ -88,10 +88,11 @@ namespace backpack {
         size += sizeof(float) * texcoord_components * num_vertices;
         return size;
     }
-    void AllocateModelPacked(uint32_t num_indices, uint32_t num_vertices)
+    void CreateModelPacked(uint32_t num_indices, uint32_t num_vertices)
     {
         size_t size = GetModelSize(num_indices, num_vertices);
-        void* ptr = (size) new;
+        void* ptr;
+        ptr = malloc(size);
     }
 
     Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices);

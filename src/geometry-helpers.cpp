@@ -119,7 +119,12 @@ namespace backpack {
         std::string err;
         tinyobj::LoadObj(&attributes, &shapes, &materials, &err, VIKING_ROOM_M.c_str());
 
-        ModelPacked
+        attributes.
+
+        uint32_t size = GetModelSize()
+        ModelPacked model{};
+
+
         for (auto& shape : shapes) {
             shape.mesh.
         }
