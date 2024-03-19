@@ -1516,6 +1516,9 @@ void VulkanGraphics::InitializeModels() {
     models.push_back(model);
     transforms.push_back(MeshPushConstants{ glm::vec4{0.0f}, glm::mat4{1.0f} });
     transforms.push_back(MeshPushConstants{ glm::vec4{0.0f}, glm::mat4{1.0f} });
+
+    backpack::ModelLoader loader;
+    loader.LoadModels({ VIKING_ROOM_M });
 }
 
 void VulkanGraphics::UpdateScene() {

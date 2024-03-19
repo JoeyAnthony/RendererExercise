@@ -1,4 +1,4 @@
-#pragma 
+#pragma once
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_structs.hpp>
@@ -68,7 +68,7 @@ class VulkanGraphics {
     VkCommandPool command_pool_;
 
     // Scene objects
-    std::vector<VEngine::Model3D> models;
+    std::vector<backpack::Model3D> models;
     std::vector<MeshPushConstants> transforms;
     VkBuffer object_transforms_ubo;
     //VkDeviceMemory scene_memory; // scene_data + object_transforms

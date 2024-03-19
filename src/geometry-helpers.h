@@ -5,8 +5,8 @@
 #include <vector>
 #include <array>
 
-constexpr std::string VIKING_ROOM_M = "./models/viking_room.obj";
-constexpr std::string VIKING_ROOM_T = "./models/viking_room.obj";
+const std::string VIKING_ROOM_T = "./models/viking_room.obj";
+const std::string VIKING_ROOM_M = "./models/viking_room.obj";
 
 struct UniformBufferObject {
     glm::mat4 view;
@@ -27,11 +27,11 @@ namespace backpack {
         glm::vec2 texcoord;
     };
 
-    const std::vector<uint16_t> quad_indices{
+    const std::vector<uint32_t> quad_indices{
         1, 0, 2, 1, 2, 3, 1
     };
 
-    const std::vector<uint16_t> indices = {
+    const std::vector<uint32_t> indices = {
     0, 1, 2, 2, 3, 0
     };
 
@@ -73,34 +73,40 @@ namespace backpack {
     };
 
     struct ModelPacked {
-        uint32_t size_indices;
-        uint32_t* indices;
-        float* position[3];
-        float* orientation[4];
-        float* texcoord[2];
+        //uint32_t size_indices;
+        //uint32_t* indices;
+        //float* position[3];
+        //float* orientation[4];
+        //float* texcoord[2];
+
+        std::vector<uint32_t> indices;
+        std::vector<glm::vec3> position;
+        std::vector<glm::vec3> orientation;
+        std::vector<glm::vec2> texcoords;
     };
 
-    size_t GetModelSize(uint32_t num_indices, uint32_t num_vertices) {
-        short vertex_components = 3;
-        short texcoord_components = 2;
-        size_t size = sizeof(uint32_t) * num_indices;
-        size += sizeof(float) * vertex_components * num_vertices;
-        size += sizeof(float) * texcoord_components * num_vertices;
-        return size;
-    }
-    void CreateModelPacked(uint32_t num_indices, uint32_t num_vertices)
-    {
-        size_t size = GetModelSize(num_indices, num_vertices);
-        void* ptr;
-        ptr = malloc(size);
-    }
+    //size_t GetModelSize(uint32_t num_indices, uint32_t num_vertices) {
+    //    short vertex_components = 3;
+    //    short texcoord_components = 2;
+    //    size_t size = sizeof(uint32_t) * num_indices;
+    //    size += sizeof(float) * vertex_components * num_vertices;
+    //    size += sizeof(float) * texcoord_components * num_vertices;
+    //    return size;
+    //}
 
-    Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices);
+    //void AllocateModelPacked(uint32_t num_indices, uint32_t num_vertices)
+    //{
+    //    //size_t size = GetModelSize(num_indices, num_vertices);
+    //    //void* ptr = (size) new;
+    //}
+
+    Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
 
     // Does not destroy uthe pipeline object
     void DestroyModel(VkDevice device, Model3D* model);
 
     class ModelLoader {
+    public:
         ModelPacked LoadModels(std::vector<std::string> paths);
         void LoadModelsToGPU(std::vector<ModelPacked> model_data);
     };

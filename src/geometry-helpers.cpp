@@ -43,9 +43,9 @@ namespace backpack {
 }
 
 namespace backpack {
-    Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<backpack::Vertex>& vertices, const std::vector<uint16_t>& indices) {
+    Model3D LoadSingleModel3D(VkDevice device, VkPhysicalDevice phys_device, VkCommandPool cmd_pool, VkQueue device_queue, uint32_t frames_in_flight, const std::vector<backpack::Vertex>& vertices, const std::vector<uint32_t>& indices) {
         VkDeviceSize vertices_size = sizeof(backpack::Vertex) * vertices.size();
-        VkDeviceSize indices_size = sizeof(uint16_t) * indices.size();
+        VkDeviceSize indices_size = sizeof(uint32_t) * indices.size();
 
         Model3D model{};
         VkBuffer staging_buffer;
@@ -111,6 +111,7 @@ namespace backpack {
         }
     }
 
+    // Todo not packed at all yet
     ModelPacked ModelLoader::LoadModels(std::vector<std::string> paths) {
         tinyobj::attrib_t attributes;
         std::vector<tinyobj::shape_t> shapes;
@@ -119,16 +120,16 @@ namespace backpack {
         std::string err;
         tinyobj::LoadObj(&attributes, &shapes, &materials, &err, VIKING_ROOM_M.c_str());
 
-        attributes.
-
-        uint32_t size = GetModelSize()
-        ModelPacked model{};
-
-
+        ModelPacked model;
         for (auto& shape : shapes) {
-            shape.mesh.
+           for(auto& index : shape.mesh.indices)
+           {
+               LOG << "";
+               
+           }
         }
 
+        return model;
     }
 
     void ModelLoader::LoadModelsToGPU(std::vector<ModelPacked> model_data) {
