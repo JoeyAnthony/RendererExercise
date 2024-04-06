@@ -58,5 +58,4 @@ target_include_directories(Krakatoa PRIVATE third-party/klein/public)
 
 target_link_libraries(Krakatoa PRIVATE tinyobjloader)
 
-set(STB_IMAGE_INCLUDE "C:/libs/stb/include")
-target_include_directories(Krakatoa PRIVATE ${STB_IMAGE_INCLUDE})
+target_include_directories(Krakatoa PRIVATE third-party/stb)
