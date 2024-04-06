@@ -51,6 +51,8 @@ namespace backpack {
         VkBuffer staging_buffer;
         VkDeviceMemory staging_memory;
 
+        model.index_count = indices.size();
+
         // Create staging buffer
         CreateBuffer(device, phys_device, vertices_size + indices_size,
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -112,24 +114,51 @@ namespace backpack {
     }
 
     // Todo not packed at all yet
-    ModelPacked ModelLoader::LoadModels(std::vector<std::string> paths) {
+    MeshGeometry ModelLoader::LoadModels(std::vector<std::string> paths) {
         tinyobj::attrib_t attributes;
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
 
         std::string err;
-        tinyobj::LoadObj(&attributes, &shapes, &materials, &err, VIKING_ROOM_M.c_str());
+        tinyobj::LoadObj(&attributes, &shapes, &materials, &err, paths[0].c_str());
 
-        ModelPacked model;
+        MeshGeometry geometry;
+        size_t vertex_index = 0;
+
+        // Only supports triangulated meshes
+        int unique_vertices_size = attributes.vertices.size() / 3;
+        geometry.vertices.resize(geometry.vertices.size() + unique_vertices_size);
+        std::vector<bool> vert_exists(unique_vertices_size, false);
+
         for (auto& shape : shapes) {
-           for(auto& index : shape.mesh.indices)
-           {
-               LOG << "";
-               
-           }
+            for (auto& index : shape.mesh.indices) {
+                geometry.indices.push_back(index.vertex_index);
+
+                // Continue if the vertex already exists
+                if (vert_exists[index.vertex_index]) {
+                    continue;
+                }
+
+                Vertex vertex{};
+                vertex.position = {
+                     attributes.vertices[3 * index.vertex_index + 0],
+                     attributes.vertices[3 * index.vertex_index + 1],
+                     attributes.vertices[3 * index.vertex_index + 2]
+                };
+
+
+                vertex.texcoord = {
+                    attributes.texcoords[2 * index.texcoord_index + 0],
+                    1.0f - attributes.texcoords[2 * index.texcoord_index + 1]
+                };
+
+                geometry.vertices[index.vertex_index] = vertex;
+
+                vert_exists[index.vertex_index] = true;
+            }
         }
 
-        return model;
+        return geometry;
     }
 
     void ModelLoader::LoadModelsToGPU(std::vector<ModelPacked> model_data) {

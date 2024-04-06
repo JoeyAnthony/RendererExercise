@@ -86,7 +86,7 @@ void CmdCopyBuffer(VkCommandBuffer cmd_buffer, VkBuffer src, VkBuffer dst, VkDev
     vkCmdCopyBuffer(cmd_buffer, src, dst, 1, &copy_region);
 }
 
-void CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_property_flags, VkDevice& vulkan_device, VkPhysicalDevice& selected_device, VkImage& image, VkDeviceMemory& memory)
+void CreateImage(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_property_flags, VkDevice& vulkan_device, VkPhysicalDevice& selected_device, VkImage& image, VkDeviceMemory& memory)
 {
     VkImageCreateInfo image_create{};
     image_create.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -94,7 +94,7 @@ void CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling
     image_create.extent.width = width;
     image_create.extent.height = height;
     image_create.extent.depth = 1;
-    image_create.mipLevels = 1;
+    image_create.mipLevels = mip_levels;
     image_create.arrayLayers = 1;
     image_create.format = format;
     image_create.tiling = tiling;
@@ -130,7 +130,7 @@ void CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling
     vkBindImageMemory(vulkan_device, image, memory, 0);
 }
 
-void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout)
+void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t mip_levels)
 {
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -141,7 +141,7 @@ void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkForma
     barrier.image = image;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;  // Offset of the mipmap levels
-    barrier.subresourceRange.levelCount = 1;    // Amount of mipmap levels to change
+    barrier.subresourceRange.levelCount = mip_levels;    // Amount of mipmap levels to change
     barrier.subresourceRange.baseArrayLayer = 0;// Offset of the array
     barrier.subresourceRange.layerCount = 1;    // Amount of layers to change in the array
 

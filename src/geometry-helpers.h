@@ -5,8 +5,8 @@
 #include <vector>
 #include <array>
 
-const std::string VIKING_ROOM_T = "./models/viking_room.obj";
-const std::string VIKING_ROOM_M = "./models/viking_room.obj";
+const std::string VIKING_ROOM_M = "../model/viking_room.obj";
+const std::string VIKING_ROOM_T = "../model/viking_room.png";
 
 struct UniformBufferObject {
     glm::mat4 view;
@@ -67,6 +67,7 @@ namespace backpack {
         VkDeviceMemory gpu_memory;
         VkPipeline pipeline;
         uint32_t index_offset;
+        uint32_t index_count;
         //std::vector<VkBuffer> ubo_buffer;
         //std::vector<VkDeviceMemory> ubo_memory;
         //std::vector<void*> ubo_mapped_memory;
@@ -83,6 +84,11 @@ namespace backpack {
         std::vector<glm::vec3> position;
         std::vector<glm::vec3> orientation;
         std::vector<glm::vec2> texcoords;
+    };
+
+    struct MeshGeometry {
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
     };
 
     //size_t GetModelSize(uint32_t num_indices, uint32_t num_vertices) {
@@ -107,7 +113,7 @@ namespace backpack {
 
     class ModelLoader {
     public:
-        ModelPacked LoadModels(std::vector<std::string> paths);
+        MeshGeometry LoadModels(std::vector<std::string> paths);
         void LoadModelsToGPU(std::vector<ModelPacked> model_data);
     };
 }

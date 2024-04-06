@@ -717,7 +717,7 @@ bool VulkanGraphics::CreateImageViews() {
     uint32_t success = 0;
     for (int i = 0; i < count; i++) {
 
-        swapchain_data_.image_views[i] = CreateImageView(vulkan_device_, swapchain_data_.images[i], swapchain_data_.format);
+        swapchain_data_.image_views[i] = CreateImageView(vulkan_device_, swapchain_data_.images[i], swapchain_data_.format, 1);
 
         if (swapchain_data_.image_views[i] != VK_NULL_HANDLE) {
             success++;
@@ -1097,35 +1097,39 @@ void VulkanGraphics::CreateDepthResources() {
     FormatHasStencilComponent(depth_format);
 
     // Create device image
-    CreateImage(swapchain_data_.extent.width, swapchain_data_.extent.height, depth_format, VK_IMAGE_TILING_OPTIMAL,
+    CreateImage(swapchain_data_.extent.width, swapchain_data_.extent.height, 1, depth_format, VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         vulkan_device_, selected_device_, depth_image_, depth_image_memory_);
 
-    depth_image_view_ = CreateImageView(vulkan_device_, depth_image_, depth_format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT);
+    depth_image_view_ = CreateImageView(vulkan_device_, depth_image_, depth_format, 1, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
 void VulkanGraphics::CreateTextureImage() {
     // Load image
     int width, height, channels;
+    uint32_t mip_levels;
     VkBuffer image_staging_buffer;
     VkDeviceMemory image_staging_memory;
-    size_t image_size = LoadTexture(vulkan_device_, selected_device_, image_staging_buffer, image_staging_memory, width, height, channels);
+    size_t image_size = LoadTexture(vulkan_device_, selected_device_, image_staging_buffer, image_staging_memory, width, height, channels, mip_levels, VIKING_ROOM_T);
 
-    CreateImage(width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    CreateImage(width, height, mip_levels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         vulkan_device_, selected_device_, texture_image_, texture_image_memory_);
 
     VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
-    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mip_levels);
     CmdCopyBufferToImage(cmd_buffer, image_staging_buffer, texture_image_, width, height);
-    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mip_levels);
     EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
 
     vkDestroyBuffer(vulkan_device_, image_staging_buffer, nullptr);
     vkFreeMemory(vulkan_device_, image_staging_memory, nullptr);
+
+    // Create image view
+    texture_image_view_ = CreateImageView(vulkan_device_, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, mip_levels);
 }
 
 void VulkanGraphics::CreateTextureImageViews() {
-    texture_image_view_ = CreateImageView(vulkan_device_, texture_image_, VK_FORMAT_R8G8B8A8_SRGB);
+    //texture_image_view_ = CreateImageView(vulkan_device_, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, mip_levels);
 }
 
 void VulkanGraphics::CreateTextureSampler() {
@@ -1337,7 +1341,7 @@ void VulkanGraphics::RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint
         vkCmdBindIndexBuffer(cmd_buffer, models[i].gpu_buffer, models[i].index_offset, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, descriptor_sets.size(), descriptor_sets.data(), 0, nullptr);
         vkCmdPushConstants(cmd_buffer, pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &transforms[i]);
-        vkCmdDrawIndexed(cmd_buffer, backpack::quad_indices.size(), 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd_buffer, models[i].index_count, 1, 0, 0, 0);
     }
 
     // End render pass
@@ -1456,11 +1460,19 @@ void VulkanGraphics::UpdateUniformBuffer(uint32_t current_frame) {
     float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
     //UniformBufferObject ubo{};
+    // x = right
+    // y = depth
+    // z = height
+
+    // x = right
+    // y = down
+    // z = forward
+
     // Quad 1
     // rotate over z
-    glm::vec3 pos = glm::vec3(0, -1, 3.f);
+    glm::vec3 pos = glm::vec3(2.f, 0.f, -1.f);
     glm::mat4 model = glm::translate(glm::mat4{ 1.0f }, pos);
-    model = glm::rotate(model, time * glm::radians(90.f), glm::vec3(0.0f, 0.0f, 1.0f));
+    model = glm::rotate(model, time * glm::radians(45.f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Quad 2
     glm::vec3 pos2 = glm::vec3(0, -1, 4.0f);
@@ -1468,7 +1480,7 @@ void VulkanGraphics::UpdateUniformBuffer(uint32_t current_frame) {
     model2 = glm::rotate(model2, time * glm::radians(90.f), glm::vec3(0.0f, 0.0f, 1.0f));
 
     // Look at the center from a distance
-    glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 2.0f, 2.0f), pos2, glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), pos, glm::vec3(0.0f, 0.0f, -1.0f));
     //90deg fov with swapchain aspect ration and near/far plane
     float aspect = swapchain_data_.extent.width / (float)swapchain_data_.extent.height;
     glm::mat4 projection = glm::perspective(glm::radians(45.f), aspect, 0.1f, 100.0f);
@@ -1508,17 +1520,15 @@ void VulkanGraphics::InitializeScene() {
 }
 
 void VulkanGraphics::InitializeModels() {
-    backpack::Model3D model;
-    auto vertices = backpack::quad_vertices;
-    auto indices = backpack::quad_indices;
-    model = backpack::LoadSingleModel3D(vulkan_device_, selected_device_, command_pool_, device_queues_.graphics_queue, MAX_FRAMES_IN_FLIGHT, vertices, indices);
-    models.push_back(model);
-    models.push_back(model);
-    transforms.push_back(MeshPushConstants{ glm::vec4{0.0f}, glm::mat4{1.0f} });
-    transforms.push_back(MeshPushConstants{ glm::vec4{0.0f}, glm::mat4{1.0f} });
-
     backpack::ModelLoader loader;
-    loader.LoadModels({ VIKING_ROOM_M });
+    backpack::MeshGeometry geometry = loader.LoadModels({ VIKING_ROOM_M });
+
+    backpack::Model3D model;
+    model = backpack::LoadSingleModel3D(vulkan_device_, selected_device_, command_pool_, device_queues_.graphics_queue, MAX_FRAMES_IN_FLIGHT, geometry.vertices, geometry.indices);
+    models.push_back(model);
+    //models.push_back(model);
+    transforms.push_back(MeshPushConstants{ glm::vec4{0.0f}, glm::mat4{1.0f} });
+    transforms.push_back(MeshPushConstants{ glm::vec4{0.0f}, glm::mat4{1.0f} });
 }
 
 void VulkanGraphics::UpdateScene() {
@@ -1567,7 +1577,7 @@ VulkanGraphics::VulkanGraphics(BP_Window* window) :
     CreateCommandPool();
 
     CreateTextureImage();
-    CreateTextureImageViews();
+    //CreateTextureImageViews();
     CreateTextureSampler();
 
     InitializeModels();
