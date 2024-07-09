@@ -53,3 +53,5 @@ void EndSingleTimeCommandBuffer(VkDevice vulkan_device, VkQueue graphics_queue, 
 void AllocateGPUMemory(VkDevice vulkan_device, VkPhysicalDevice selected_device, VkBuffer buffer, VkDeviceSize size, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks* p_allocate_info);
 
 bool FormatHasStencilComponent(VkFormat format);
+
+void GenerateMipmaps(VkImage image, uint32_t width, uint32_t height, uint32_t mip_levels);

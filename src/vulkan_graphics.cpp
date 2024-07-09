@@ -784,17 +784,22 @@ void VulkanGraphics::CreateRenderPass() {
     dependancy.dstSubpass = 0;
 
     // The render pipeline has several stages it goes through. Here go all pipeline stages this subpass depends on and will wait for them to finish
+    // The source specifies the dependency, so these are the stages that will write to the attachment.
     // Since the depth buffer is first accessed in early fragment test we should wait on that stage
     dependancy.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     // All stages that should not execute before this subpass ends
+    // These stages will wait for the cache to be flushed to device memory, the source writes to the cache, the destination waits for the flush.
     dependancy.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 
     // The operation this subpass should wait for. In this case it should wait on the write operation because we clear the buffer at the start of the render pass.
+    // The dependency of this subpass, so wait on the dependency.
     dependancy.srcAccessMask = 0;
     // It has to wait on the write operation of the color attachment stage
     // TODO so it should wait on both the image attachment and depth attachment to be ready (Load operations)
     // TODO Is the semaphore responsible for that and why is it that single semaphore I specified later during the render calls?
     // TODO why do we need a destination mask exactly?
+    // The destination has to wait on the source before executing. In this case, if the resource was not loaded, it should not execute the write operations.
+    // Telling Vulkan which operations should wait on the dependency.
     dependancy.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
     // Create the render pass
@@ -1116,9 +1121,11 @@ void VulkanGraphics::CreateTextureImage() {
         vulkan_device_, selected_device_, texture_image_, texture_image_memory_);
 
     VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
+
     CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mip_levels);
     CmdCopyBufferToImage(cmd_buffer, image_staging_buffer, texture_image_, width, height);
-    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mip_levels);
+    //CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mip_levels);
+
     EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
 
     vkDestroyBuffer(vulkan_device_, image_staging_buffer, nullptr);

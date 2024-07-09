@@ -76,6 +76,22 @@ bool FormatHasStencilComponent(VkFormat format)
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D16_UNORM_S8_UINT;
 }
 
+void GenerateMipmaps(VkDevice vulkan_device, VkCommandPool cmd_pool, VkQueue graphics_queue, VkImage image, uint32_t width, uint32_t height, uint32_t mip_levels)
+{
+    VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device, cmd_pool);
+
+    VkImageMemoryBarrier img_barrier{};
+    img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    img_barrier.image = image;
+    img_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    img_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+    img_barrier.subresourceRange.layerCount = 1;
+    img_barrier.subresourceRange.levelCount = 1;
+
+    EndSingleTimeCommandBuffer(vulkan_device, graphics_queue, cmd_pool, cmd_buffer);
+}
+
 void CmdCopyBuffer(VkCommandBuffer cmd_buffer, VkBuffer src, VkBuffer dst, VkDeviceSize size)
 {
     VkBufferCopy copy_region{};
@@ -102,7 +118,8 @@ void CreateImage(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat 
 
     image_create.usage = usage;
     if (usage == 0) {
-        image_create.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        // Transfer src and destination for 
+        image_create.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     }
 
     image_create.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -146,8 +163,8 @@ void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkForma
     barrier.subresourceRange.layerCount = 1;    // Amount of layers to change in the array
 
     // Pipeline stage usage before and after. So which stages of the pipeline was it used and in which is the new one?
-    VkPipelineStageFlags stage_before = 0;
-    VkPipelineStageFlags stage_after = 0;
+    VkPipelineStageFlags src_stage_mask = 0;
+    VkPipelineStageFlags dst_stage_mask = 0;
     if(new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
     {
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -164,16 +181,16 @@ void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkForma
 
     if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
         //
-        stage_before = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        stage_after = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        src_stage_mask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
         // Sets which attachment the render pass should access
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     }
     else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-        stage_before = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        stage_after = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        src_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -187,16 +204,16 @@ void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkForma
             barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
         }
 
-        stage_before = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        stage_after = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        src_stage_mask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     }
 
     vkCmdPipelineBarrier(cmd_buffer,
-        stage_before,     // All stages before this stage has to execute
-        stage_after,    // All work after this stage has to wait
+        src_stage_mask,     // All stages before this stage has to execute
+        dst_stage_mask,    // All work after this stage has to wait
         0,
         0, nullptr, // Memory Barriers
         0, nullptr, // Buffer Memory Barriers
