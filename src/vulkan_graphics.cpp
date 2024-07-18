@@ -784,22 +784,17 @@ void VulkanGraphics::CreateRenderPass() {
     dependancy.dstSubpass = 0;
 
     // The render pipeline has several stages it goes through. Here go all pipeline stages this subpass depends on and will wait for them to finish
-    // The source specifies the dependency, so these are the stages that will write to the attachment.
     // Since the depth buffer is first accessed in early fragment test we should wait on that stage
     dependancy.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     // All stages that should not execute before this subpass ends
-    // These stages will wait for the cache to be flushed to device memory, the source writes to the cache, the destination waits for the flush.
     dependancy.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 
     // The operation this subpass should wait for. In this case it should wait on the write operation because we clear the buffer at the start of the render pass.
-    // The dependency of this subpass, so wait on the dependency.
     dependancy.srcAccessMask = 0;
     // It has to wait on the write operation of the color attachment stage
     // TODO so it should wait on both the image attachment and depth attachment to be ready (Load operations)
     // TODO Is the semaphore responsible for that and why is it that single semaphore I specified later during the render calls?
     // TODO why do we need a destination mask exactly?
-    // The destination has to wait on the source before executing. In this case, if the resource was not loaded, it should not execute the write operations.
-    // Telling Vulkan which operations should wait on the dependency.
     dependancy.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
     // Create the render pass
@@ -1109,7 +1104,7 @@ void VulkanGraphics::CreateDepthResources() {
     depth_image_view_ = CreateImageView(vulkan_device_, depth_image_, depth_format, 1, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
-void VulkanGraphics::CreateTextureImage() {
+BP_Texture VulkanGraphics::CreateTextureImage() {
     // Load image
     int width, height, channels;
     uint32_t mip_levels;
@@ -1117,15 +1112,15 @@ void VulkanGraphics::CreateTextureImage() {
     VkDeviceMemory image_staging_memory;
     size_t image_size = LoadTexture(vulkan_device_, selected_device_, image_staging_buffer, image_staging_memory, width, height, channels, mip_levels, VIKING_ROOM_T);
 
-    CreateImage(width, height, mip_levels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    // Usage is both src and dst for generating mipmaps
+    CreateImage(width, height, mip_levels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         vulkan_device_, selected_device_, texture_image_, texture_image_memory_);
 
     VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
-
     CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mip_levels);
     CmdCopyBufferToImage(cmd_buffer, image_staging_buffer, texture_image_, width, height);
-    //CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mip_levels);
-
+    CmdGenerateMipmaps(cmd_buffer, selected_device_, VK_FORMAT_R8G8B8A8_SRGB, texture_image_, width, height, mip_levels);
+    CmdTransitionImageLayout(cmd_buffer, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mip_levels);
     EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
 
     vkDestroyBuffer(vulkan_device_, image_staging_buffer, nullptr);
@@ -1133,13 +1128,20 @@ void VulkanGraphics::CreateTextureImage() {
 
     // Create image view
     texture_image_view_ = CreateImageView(vulkan_device_, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, mip_levels);
+    BP_Texture bp_image;
+    bp_image.image = texture_image_;
+    bp_image.memory = texture_image_memory_;
+    bp_image.mip_levels = mip_levels;
+    bp_image.image_view = texture_image_view_;
+    bp_image.format = VK_FORMAT_R8G8B8A8_SRGB;
+    return bp_image;
 }
 
 void VulkanGraphics::CreateTextureImageViews() {
     //texture_image_view_ = CreateImageView(vulkan_device_, texture_image_, VK_FORMAT_R8G8B8A8_SRGB, mip_levels);
 }
 
-void VulkanGraphics::CreateTextureSampler() {
+void VulkanGraphics::CreateTextureSampler(BP_Texture texture) {
     VkPhysicalDeviceProperties device_properties;
     vkGetPhysicalDeviceProperties(selected_device_, &device_properties);
 
@@ -1163,10 +1165,10 @@ void VulkanGraphics::CreateTextureSampler() {
     info.compareEnable = VK_FALSE;
     info.compareOp = VK_COMPARE_OP_ALWAYS;
 
-    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     info.mipLodBias = 0.0f;
     info.minLod = 0.0f;
-    info.maxLod = 0.0f;
+    info.maxLod = static_cast<float>(texture.mip_levels);
 
     VkResult res = vkCreateSampler(vulkan_device_, &info, nullptr, &texture_sampler_);
     if (res == VK_SUCCESS) {
@@ -1583,9 +1585,9 @@ VulkanGraphics::VulkanGraphics(BP_Window* window) :
     CreateFramebuffers();
     CreateCommandPool();
 
-    CreateTextureImage();
+    auto image = CreateTextureImage();
     //CreateTextureImageViews();
-    CreateTextureSampler();
+    CreateTextureSampler(image);
 
     InitializeModels();
 

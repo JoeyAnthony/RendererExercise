@@ -76,9 +76,15 @@ bool FormatHasStencilComponent(VkFormat format)
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D16_UNORM_S8_UINT;
 }
 
-void GenerateMipmaps(VkDevice vulkan_device, VkCommandPool cmd_pool, VkQueue graphics_queue, VkImage image, uint32_t width, uint32_t height, uint32_t mip_levels)
+void CmdGenerateMipmaps(VkCommandBuffer cmd_buffer, VkPhysicalDevice physical_device, VkFormat format, VkImage image, uint32_t width, uint32_t height, uint32_t mip_levels)
 {
-    VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device, cmd_pool);
+    VkFormatProperties format_properties;
+    vkGetPhysicalDeviceFormatProperties(physical_device, format, &format_properties);
+    if(!(format_properties.optimalTilingFeatures | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+    {
+        LOG << "FAILURE\t Device doesn't support linear filtering";
+        return;
+    }
 
     VkImageMemoryBarrier img_barrier{};
     img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -88,8 +94,60 @@ void GenerateMipmaps(VkDevice vulkan_device, VkCommandPool cmd_pool, VkQueue gra
 
     img_barrier.subresourceRange.layerCount = 1;
     img_barrier.subresourceRange.levelCount = 1;
+    img_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
-    EndSingleTimeCommandBuffer(vulkan_device, graphics_queue, cmd_pool, cmd_buffer);
+    int32_t mip_width = width;
+    int32_t mip_height = height;
+    // Skip the main texture in the loop
+    for (int32_t i = 1; i < mip_levels; i++) {
+        // Transition previous texture to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+        img_barrier.subresourceRange.baseMipLevel = i - 1;
+        img_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        img_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        img_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        img_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &img_barrier);
+
+        VkImageBlit blit_info{};
+        blit_info.srcOffsets[0] = { 0, 0, 0 };
+        blit_info.srcOffsets[1] = { mip_width, mip_height, 1 };
+        blit_info.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit_info.srcSubresource.baseArrayLayer = 0;
+        blit_info.srcSubresource.layerCount = 1;
+        blit_info.srcSubresource.mipLevel = i - 1;
+
+        // Make destination mip resolution half of the source mip
+        mip_width = mip_width > 1 ? mip_width / 2 : 1;
+        mip_height = mip_height > 1 ? mip_height / 2 : 1;
+
+        blit_info.dstOffsets[0] = { 0, 0, 0 };
+        blit_info.dstOffsets[1] = { mip_width, mip_height, 1 };
+        blit_info.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit_info.dstSubresource.baseArrayLayer = 0;
+        blit_info.dstSubresource.layerCount = 1;
+        blit_info.dstSubresource.mipLevel = i;
+
+        vkCmdBlitImage(cmd_buffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit_info, VK_FILTER_LINEAR);
+
+        // Needs barriers after each blit to make the currently blitted image a transfer src
+    }
+
+    // Transition last mip from transfer_dst to transfer_src for consistency.
+    img_barrier.subresourceRange.baseMipLevel = mip_levels - 1;
+    img_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    img_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    img_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    img_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &img_barrier);
 }
 
 void CmdCopyBuffer(VkCommandBuffer cmd_buffer, VkBuffer src, VkBuffer dst, VkDeviceSize size)
@@ -193,6 +251,13 @@ void CmdTransitionImageLayout(VkCommandBuffer cmd_buffer, VkImage image, VkForma
         dst_stage_mask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
+    else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        src_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     }
     else if(old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)

@@ -35,6 +35,14 @@ struct BP_SwapchainInfo {
     std::vector<VkFramebuffer> framebuffers;
 };
 
+struct BP_Texture {
+    uint32_t mip_levels;
+    VkImage image;
+    VkImageView image_view;
+    VkDeviceMemory memory;
+    VkFormat format;
+};
+
 uint32_t FindMemoryTypes(VkPhysicalDevice selected_device, uint32_t type_filter, VkMemoryPropertyFlags properties);
 
 void CreateBuffer(VkDevice vulkan_device, VkPhysicalDevice selected_device, VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory, VkMemoryPropertyFlags memory_properties, VkAllocationCallbacks* p_allocate_info = nullptr);
@@ -54,4 +62,7 @@ void AllocateGPUMemory(VkDevice vulkan_device, VkPhysicalDevice selected_device,
 
 bool FormatHasStencilComponent(VkFormat format);
 
-void GenerateMipmaps(VkImage image, uint32_t width, uint32_t height, uint32_t mip_levels);
+//Optimize this function so it's easy to use when it comes to image layouts. Maybe don't transition layouts at all so it's up to the user to transtion back afterwards.
+// Image must be in layout VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+// Transitions image layout to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+void CmdGenerateMipmaps(VkCommandBuffer cmd_buffer, VkPhysicalDevice physical_device, VkFormat format, VkImage image, uint32_t width, uint32_t height, uint32_t mip_levels);

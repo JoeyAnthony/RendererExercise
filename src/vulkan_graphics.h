@@ -181,11 +181,11 @@ public:
 
     void CreateFramebuffers();
 
-    void CreateTextureImage();
+    BP_Texture CreateTextureImage();
 
     void CreateTextureImageViews();
 
-    void CreateTextureSampler();
+    void CreateTextureSampler(BP_Texture texture);
 
     void CreateUniformBuffers();
 
