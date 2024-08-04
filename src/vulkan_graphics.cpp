@@ -1601,6 +1601,14 @@ void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysical
     CreateSyncObjects();
 }
 
+void VulkanGraphics::CreateComputeResources()
+{
+    VkDeviceSize size = sizeof(ShaderStorageBuffer);
+
+    CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        storage_buffer[0], storage_memory[0], VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
+}
+
 void VulkanGraphics::InitializeScene() {
     /*
      * Init scene ubo

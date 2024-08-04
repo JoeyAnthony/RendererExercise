@@ -14,6 +14,10 @@ struct UniformBufferObject {
     glm::mat4 view_projection;
 };
 
+struct ShaderStorageBuffer {
+    glm::vec3 particles{};
+};
+
 struct MeshPushConstants {
     glm::vec4 data;
     glm::mat4 transform;

@@ -83,6 +83,10 @@ class VulkanGraphics {
     std::vector<VkBuffer> uniform_buffers_;
     std::vector<VkDeviceMemory> uniform_memory_;
     std::vector<void*> uniform_mapped_memory_;
+
+    std::vector<VkBuffer> storage_buffer;
+    std::vector<VkDeviceMemory> storage_memory;
+
     // ~Scene objects
 
     bool resize_necessary_ = false;
@@ -217,6 +221,11 @@ public:
     void RecreateSwapchain(const WindowData& window_data, VkPhysicalDevice device);
 
 
+
+    //---------------------
+    // Compute
+
+    void CreateComputeResources();
 
     //---------------------
 
