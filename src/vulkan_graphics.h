@@ -50,6 +50,7 @@ class VulkanGraphics {
     VkDebugUtilsMessengerEXT debug_messenger_;
     VkSurfaceKHR vulkan_surface_;
     VkPhysicalDevice selected_device_ = VK_NULL_HANDLE;
+    VkSampleCountFlagBits device_sample_count;
     VkDevice vulkan_device_;
     bool enable_validation_layers_ = false;
     DeviceQueues device_queues_;
@@ -98,6 +99,10 @@ class VulkanGraphics {
     VkImage depth_image_;
     VkDeviceMemory depth_image_memory_;
     VkImageView depth_image_view_;
+
+    VkImage color_image_;
+    VkDeviceMemory color_image_memory_;
+    VkImageView color_image_view_;
 
 private:
     bool Initialize();
@@ -152,6 +157,9 @@ public:
 
     void SetVulkanSurface(const VkSurfaceKHR& surface);
 
+    VkSampleCountFlagBits GetDeviceSampleCount(VkPhysicalDevice physical_device);
+    VkSampleCountFlagBits GetDeviceSampleCount(const VkPhysicalDeviceProperties& device_properties);
+
     SwapChainDetails QuerySwapchainSupport(VkPhysicalDevice device);
 
     VkSurfaceFormatKHR GetPreferredSwapchainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& supported_formats);
@@ -182,6 +190,8 @@ public:
     void CreateFramebuffers();
 
     BP_Texture CreateTextureImage();
+
+    BP_Texture CreateColorResources();
 
     void CreateTextureImageViews();
 

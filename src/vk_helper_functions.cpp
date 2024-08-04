@@ -160,7 +160,7 @@ void CmdCopyBuffer(VkCommandBuffer cmd_buffer, VkBuffer src, VkBuffer dst, VkDev
     vkCmdCopyBuffer(cmd_buffer, src, dst, 1, &copy_region);
 }
 
-void CreateImage(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_property_flags, VkDevice& vulkan_device, VkPhysicalDevice& selected_device, VkImage& image, VkDeviceMemory& memory)
+void CreateImage(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_property_flags, VkDevice& vulkan_device, VkPhysicalDevice& selected_device, VkImage& image, VkDeviceMemory& memory, VkSampleCountFlagBits num_samples)
 {
     VkImageCreateInfo image_create{};
     image_create.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -181,7 +181,7 @@ void CreateImage(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat 
     }
 
     image_create.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    image_create.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create.samples = num_samples;
     image_create.flags = 0;
 
     VkResult res = vkCreateImage(vulkan_device, &image_create, nullptr, &image);

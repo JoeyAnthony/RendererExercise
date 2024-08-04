@@ -201,6 +201,7 @@ void VulkanGraphics::DestroySwapchain() {
         vkDestroyFence(vulkan_device_, fence_in_flight_[i], nullptr);
     }
 
+    // Destroy depth images
     vkDestroyImageView(vulkan_device_, depth_image_view_, nullptr);
     vkDestroyImage(vulkan_device_, depth_image_, nullptr);
     vkFreeMemory(vulkan_device_, depth_image_memory_, nullptr);
@@ -242,6 +243,13 @@ void VulkanGraphics::Edulcorate() {
     // Destroy images
     vkDestroyImage(vulkan_device_, texture_image_, nullptr);
     vkFreeMemory(vulkan_device_, texture_image_memory_, nullptr);
+
+    // Destroy MSAA image
+    vkDestroyImageView(vulkan_device_, color_image_view_, nullptr);
+    vkDestroyImage(vulkan_device_, color_image_, nullptr);
+    vkFreeMemory(vulkan_device_, color_image_memory_, nullptr);
+
+    // Depth image is destroyed with the swapchain
 
     // Destroy uniform buffers
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -334,7 +342,7 @@ void VulkanGraphics::SelectPhysicalDevice() {
 
     std::multimap<uint32_t, VkPhysicalDevice> device_scores;
 
-    for (int i = 0; i < device_count; i++) {
+    for (uint32_t i = 0; i < device_count; i++) {
         VkPhysicalDevice device = found_devices[i];
         VkPhysicalDeviceProperties device_properties;
         vkGetPhysicalDeviceProperties(device, &device_properties);
@@ -354,6 +362,10 @@ void VulkanGraphics::SelectPhysicalDevice() {
 
     VkPhysicalDeviceProperties device_properties;
     vkGetPhysicalDeviceProperties(selected_device_, &device_properties);
+
+    // Get device sample count
+    device_sample_count = GetDeviceSampleCount(selected_device_);
+
     LOG << "SELECTED\t Physical device" << device_properties.deviceName;
 }
 
@@ -457,6 +469,8 @@ void VulkanGraphics::CreateLogicalDevice() {
 
     // Specify which features will be used, shaders etc.
     VkPhysicalDeviceFeatures device_features{};
+    // Set the amount of samples used per fragment https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap28.html#primsrast-sampleshading
+    device_features.sampleRateShading = VK_TRUE;
 
     // Create device create info struct
     VkDeviceCreateInfo device_create_info{};
@@ -502,6 +516,35 @@ VkInstance VulkanGraphics::GetVulkanInstance() {
 
 void VulkanGraphics::SetVulkanSurface(const VkSurfaceKHR& surface) {
     vulkan_surface_ = surface;
+}
+
+VkSampleCountFlagBits VulkanGraphics::GetDeviceSampleCount(VkPhysicalDevice physical_device) {
+
+    VkPhysicalDeviceProperties device_properties;
+    vkGetPhysicalDeviceProperties(physical_device, &device_properties);
+
+    return GetDeviceSampleCount(device_properties);
+}
+
+VkSampleCountFlagBits VulkanGraphics::GetDeviceSampleCount(const VkPhysicalDeviceProperties& device_properties) {
+    VkSampleCountFlags counts = device_properties.limits.framebufferColorSampleCounts & device_properties.limits.framebufferDepthSampleCounts;
+    switch (counts) {
+    case VK_SAMPLE_COUNT_64_BIT:
+        return VK_SAMPLE_COUNT_64_BIT;
+    case VK_SAMPLE_COUNT_32_BIT:
+        return VK_SAMPLE_COUNT_32_BIT;
+    case VK_SAMPLE_COUNT_16_BIT:
+        return VK_SAMPLE_COUNT_16_BIT;
+    case VK_SAMPLE_COUNT_8_BIT:
+        return VK_SAMPLE_COUNT_8_BIT;
+    case VK_SAMPLE_COUNT_4_BIT:
+        return VK_SAMPLE_COUNT_4_BIT;
+    case VK_SAMPLE_COUNT_2_BIT:
+        return VK_SAMPLE_COUNT_2_BIT;
+    default:
+        LOG << "WARNING " << "Multisample count property found, defaulting to 2 samples";
+        return VK_SAMPLE_COUNT_2_BIT;
+    };
 }
 
 SwapChainDetails VulkanGraphics::QuerySwapchainSupport(VkPhysicalDevice device) {
@@ -733,7 +776,7 @@ bool VulkanGraphics::CreateImageViews() {
 void VulkanGraphics::CreateRenderPass() {
     VkAttachmentDescription color_attachment{};
     color_attachment.format = swapchain_data_.format;
-    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.samples = device_sample_count;
 
     // For color and depth data
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -743,7 +786,7 @@ void VulkanGraphics::CreateRenderPass() {
     color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentDescription depth_attachment{};
     depth_attachment.format = FindDepthFormat();
@@ -752,13 +795,24 @@ void VulkanGraphics::CreateRenderPass() {
     depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     // Don't flush the memory to the buffer.Probably quicker if we don't need to use it anyways
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.samples = device_sample_count;
     // We don't care about storing data since we're not using the depth map after rendering
     // Maybe for debugging when showing the depth map, this would be necessary to write to a buffer
     depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-    std::array<VkAttachmentDescription, 2> attachments{ color_attachment, depth_attachment };
+    // To resolve the multi sampled buffer to a regular color buffer
+    VkAttachmentDescription color_resolve_attachment{};
+    color_resolve_attachment.format = swapchain_data_.format;
+    color_resolve_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_resolve_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_resolve_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_resolve_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_resolve_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_resolve_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_resolve_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    std::array<VkAttachmentDescription, 3> attachments{ color_attachment, depth_attachment, color_resolve_attachment };
 
     // Reference attachments
     VkAttachmentReference attachment_reference{};
@@ -769,33 +823,37 @@ void VulkanGraphics::CreateRenderPass() {
     attachment_reference_depth.attachment = 1;
     attachment_reference_depth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentReference attachment_reference_resolve{};
+    attachment_reference_resolve.attachment = 2;
+    attachment_reference_resolve.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
     // Describe subpass
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &attachment_reference;
+    subpass.pResolveAttachments = &attachment_reference_resolve;
     subpass.pDepthStencilAttachment = &attachment_reference_depth;
 
-
-    VkSubpassDependency dependancy{};
+    VkSubpassDependency dependency{};
     // Make a subpass wait on the render pass to initialize and the load operations to finish
-    dependancy.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     // The subpass in question
-    dependancy.dstSubpass = 0;
+    dependency.dstSubpass = 0;
 
     // The render pipeline has several stages it goes through. Here go all pipeline stages this subpass depends on and will wait for them to finish
     // Since the depth buffer is first accessed in early fragment test we should wait on that stage
-    dependancy.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     // All stages that should not execute before this subpass ends
-    dependancy.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 
     // The operation this subpass should wait for. In this case it should wait on the write operation because we clear the buffer at the start of the render pass.
-    dependancy.srcAccessMask = 0;
+    dependency.srcAccessMask = 0;
     // It has to wait on the write operation of the color attachment stage
     // TODO so it should wait on both the image attachment and depth attachment to be ready (Load operations)
     // TODO Is the semaphore responsible for that and why is it that single semaphore I specified later during the render calls?
     // TODO why do we need a destination mask exactly?
-    dependancy.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
     // Create the render pass
     VkRenderPassCreateInfo render_pass_info{};
@@ -805,7 +863,7 @@ void VulkanGraphics::CreateRenderPass() {
     render_pass_info.subpassCount = 1;
     render_pass_info.pSubpasses = &subpass;
     render_pass_info.dependencyCount = 1;
-    render_pass_info.pDependencies = &dependancy;
+    render_pass_info.pDependencies = &dependency;
 
     if (vkCreateRenderPass(vulkan_device_, &render_pass_info, nullptr, &render_pass_) == VK_SUCCESS) {
         LOG << "SUCCESS \t Created render pass";
@@ -940,9 +998,9 @@ void VulkanGraphics::CreateGraphicsPipeline() {
     // Create Multisampling state
     VkPipelineMultisampleStateCreateInfo multisampling_state{};
     multisampling_state.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling_state.sampleShadingEnable = VK_FALSE;
-    multisampling_state.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-    multisampling_state.minSampleShading = 1.0f;
+    multisampling_state.sampleShadingEnable = VK_TRUE; // Enable sample shading in the pipeline
+    multisampling_state.minSampleShading = .2f; // Min fraction for sample shading; closer to one is smooth
+    multisampling_state.rasterizationSamples = device_sample_count;
     multisampling_state.pSampleMask = nullptr;
     multisampling_state.alphaToCoverageEnable = VK_FALSE;
     multisampling_state.alphaToOneEnable = VK_FALSE;
@@ -1046,9 +1104,10 @@ void VulkanGraphics::CreateFramebuffers() {
     swapchain_data_.framebuffers.resize(sw_image_count);
 
     for (int32_t i = 0; i < sw_image_count; i++) {
-        std::array<VkImageView, 2> image_views{
-            swapchain_data_.image_views[i],
-            depth_image_view_
+        std::array<VkImageView, 3> image_views{
+            color_image_view_,
+            depth_image_view_,
+            swapchain_data_.image_views[i]
         };
 
         VkFramebufferCreateInfo framebuffer_info{};
@@ -1099,9 +1158,9 @@ void VulkanGraphics::CreateDepthResources() {
     // Create device image
     CreateImage(swapchain_data_.extent.width, swapchain_data_.extent.height, 1, depth_format, VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        vulkan_device_, selected_device_, depth_image_, depth_image_memory_);
+        vulkan_device_, selected_device_, color_image_, depth_image_memory_, device_sample_count);
 
-    depth_image_view_ = CreateImageView(vulkan_device_, depth_image_, depth_format, 1, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT);
+    depth_image_view_ = CreateImageView(vulkan_device_, color_image_, depth_format, 1, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
 BP_Texture VulkanGraphics::CreateTextureImage() {
@@ -1135,6 +1194,26 @@ BP_Texture VulkanGraphics::CreateTextureImage() {
     bp_image.image_view = texture_image_view_;
     bp_image.format = VK_FORMAT_R8G8B8A8_SRGB;
     return bp_image;
+}
+
+BP_Texture VulkanGraphics::CreateColorResources()
+{
+    // Create multi-sampled buffer
+    CreateImage(swapchain_data_.extent.width, swapchain_data_.extent.height, 1, swapchain_data_.format, VkImageTiling::VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vulkan_device_, selected_device_,
+        color_image_, color_image_memory_, device_sample_count);
+
+    //Create image view for it
+   color_image_view_ = CreateImageView(vulkan_device_, color_image_, swapchain_data_.format, 1);
+
+    BP_Texture color{};
+    color.format = swapchain_data_.format;
+    color.image = color_image_;
+    color.image_view = color_image_view_;
+    color.memory = color_image_memory_;
+    color.mip_levels = 1;
+
+    return color;
 }
 
 void VulkanGraphics::CreateTextureImageViews() {
@@ -1513,8 +1592,10 @@ void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysical
         win = app_window_->GetWindowData();
     }
 
+    // We don't need to destroy these images before creating new ones?
     CreateSwapchain(win, device);
     CreateImageViews();
+    CreateColorResources();
     CreateDepthResources();
     CreateFramebuffers();
     CreateSyncObjects();
@@ -1581,6 +1662,7 @@ VulkanGraphics::VulkanGraphics(BP_Window* window) :
     CreateRenderPass();
     CreateDescriptorSetLayout();
     CreateGraphicsPipeline();
+    CreateColorResources();
     CreateDepthResources();
     CreateFramebuffers();
     CreateCommandPool();
