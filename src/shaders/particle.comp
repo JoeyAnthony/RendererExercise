@@ -1,0 +1,39 @@
+#version 450
+
+struct Particle {
+    vec2 position;
+    vec2 velocity;
+    vec4 color;
+};
+
+// Access to the delta time in the UBO.
+// A push constant may also be possible.
+layout (binding=0) uniform ParameterUBO{
+    float deltaTime;
+} ubo;
+
+// Define layout std140 which determines the buffer size
+// This one is readonly for reading out data
+layout(std140, binding = 1) readonly buffer ParticleSSBOIn {
+    Particle particlesIn[];
+};
+
+// This one can write to memory
+layout(std140, binding = 2) buffer ParticleSSBOOut {
+    Particle particlesOut[];
+};
+
+// Describes the size of the number of invocations in the workgroup.
+// This is locally for the workgroup.
+// There is only a 1D array of items so we can just run as is.
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+void main(){
+    // This is a GLSL global. It identifies the current invocation id across the currend dispatch.
+    // It can be used to get the index in the array this invocation should process.
+    uint index = gl_GlobalInvocationID.x;
+    Particle prev_particle = particlesIn[index];
+
+    particlesOut[index].position = prev_particle.position + prev_particle.velocity * ubo.deltaTime;
+    particlesOut[index].velocity = prev_particle.velocity;
+}

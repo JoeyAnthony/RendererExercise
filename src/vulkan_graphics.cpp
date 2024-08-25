@@ -914,7 +914,6 @@ void VulkanGraphics::CreateGraphicsPipeline() {
     VulkanShaderLoader shader_loader;
     VkShaderModule vertex_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\v_triangle.spv"), vulkan_device_, nullptr);
     VkShaderModule fragment_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\f_triangle.spv"), vulkan_device_, nullptr);
-    VkShaderModule compute_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\particle.spv"), vulkan_device_, nullptr);
 
     // Initialize shader stages
     VkPipelineShaderStageCreateInfo vertex_pipeline{};
@@ -928,12 +927,6 @@ void VulkanGraphics::CreateGraphicsPipeline() {
     fragment_pipeline.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     fragment_pipeline.module = fragment_shader;
     fragment_pipeline.pName = "main";
-
-    VkPipelineShaderStageCreateInfo compute_pipeline{};
-    compute_pipeline.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    compute_pipeline.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    compute_pipeline.module = compute_shader;
-    compute_pipeline.pName = "main";
 
     VkPipelineShaderStageCreateInfo shader_stages[]{ vertex_pipeline, fragment_pipeline };
 
@@ -1610,8 +1603,8 @@ void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysical
 }
 
 void VulkanGraphics::CreateComputeResources() {
-    storage_buffer.resize(MAX_FRAMES_IN_FLIGHT);
-    storage_memory.resize(MAX_FRAMES_IN_FLIGHT);
+    storage_buffer_.resize(MAX_FRAMES_IN_FLIGHT);
+    storage_memory_.resize(MAX_FRAMES_IN_FLIGHT);
 
     // Random number generator
     size_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
@@ -1646,14 +1639,14 @@ void VulkanGraphics::CreateComputeResources() {
     // Create storage buffer and record copy commands
     VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
     // Will be used in compute shader as ssbo and in vertex shader as vbo
-    storage_buffer.resize(MAX_FRAMES_IN_FLIGHT);
-    storage_memory.resize(MAX_FRAMES_IN_FLIGHT);
+    storage_buffer_.resize(MAX_FRAMES_IN_FLIGHT);
+    storage_memory_.resize(MAX_FRAMES_IN_FLIGHT);
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            storage_buffer[i], storage_memory[i], VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
+            storage_buffer_[i], storage_memory_[i], VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
 
         // Copy data
-        CmdCopyBuffer(cmd_buffer, staging_buffer, storage_buffer[i], size);
+        CmdCopyBuffer(cmd_buffer, staging_buffer, storage_buffer_[i], size);
     }
     EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
 
@@ -1682,7 +1675,7 @@ void VulkanGraphics::CreateComputeResources() {
     layout_info.bindingCount = desc_set_layouts_bindings.size();
     layout_info.pBindings = desc_set_layouts_bindings.data();
 
-    VkResult res = vkCreateDescriptorSetLayout(vulkan_device_, &layout_info, nullptr, &desc_layout_compute);
+    VkResult res = vkCreateDescriptorSetLayout(vulkan_device_, &layout_info, nullptr, &compute_desc_set_layout_);
     if (res != VK_SUCCESS) {
         LOG << "Failed creating sync objects";
         return;
@@ -1705,19 +1698,19 @@ void VulkanGraphics::CreateComputeResources() {
     pool_info.pPoolSizes = pool_sizes.data();
     pool_info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-    res = vkCreateDescriptorPool(vulkan_device_, &pool_info, nullptr, &compute_desc_pool);
+    res = vkCreateDescriptorPool(vulkan_device_, &pool_info, nullptr, &compute_desc_pool_);
     if (res != VK_SUCCESS) {
         LOG << "FAILURE\t Failed creating compute descriptor pool, error:" << res;
     }
 
-    std::array<VkDescriptorSetLayout, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)> desc_set_layouts {desc_layout_compute};
+    std::array<VkDescriptorSetLayout, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)> desc_set_layouts {compute_desc_set_layout_};
     VkDescriptorSetAllocateInfo allocate_info{};
     allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocate_info.descriptorPool = compute_desc_pool;
+    allocate_info.descriptorPool = compute_desc_pool_;
     allocate_info.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     allocate_info.pSetLayouts = desc_set_layouts.data();
 
-    vkAllocateDescriptorSets(vulkan_device_, &allocate_info, &descriptor_set_compute);
+    vkAllocateDescriptorSets(vulkan_device_, &allocate_info, &compute_descriptor_set_);
 
     // Initialize descriptors
     for (int i = 0; i < static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT); i++) {
@@ -1726,13 +1719,13 @@ void VulkanGraphics::CreateComputeResources() {
         ubo_info.offset = 0;
         ubo_info.range = VK_WHOLE_SIZE;
 
-        VkDescriptorBufferInfo ssbo_info_current{};
-        ubo_info.buffer = storage_buffer[i];
+        VkDescriptorBufferInfo ssbo_info_previous{};
+        ubo_info.buffer = storage_buffer_[i - 1 % static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)];
         ubo_info.offset = 0;
         ubo_info.range = VK_WHOLE_SIZE;
 
-        VkDescriptorBufferInfo ssbo_info_previous{};
-        ubo_info.buffer = storage_buffer[i - 1 % static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)];
+        VkDescriptorBufferInfo ssbo_info_current{};
+        ubo_info.buffer = storage_buffer_[i];
         ubo_info.offset = 0;
         ubo_info.range = VK_WHOLE_SIZE;
 
@@ -1743,31 +1736,51 @@ void VulkanGraphics::CreateComputeResources() {
         write_set[0].descriptorCount = 1;
         write_set[0].dstBinding = 0;
         write_set[0].dstArrayElement = 0;
-        write_set[0].dstSet = descriptor_set_compute;
+        write_set[0].dstSet = compute_descriptor_set_;
 
         write_set[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write_set[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        write_set[1].pBufferInfo = &ssbo_info_current;
+        write_set[1].pBufferInfo = &ssbo_info_previous;
         write_set[1].descriptorCount = 1;
         write_set[1].dstBinding = 1;
         write_set[1].dstArrayElement = 0;
-        write_set[1].dstSet = descriptor_set_compute;
+        write_set[1].dstSet = compute_descriptor_set_;
 
         write_set[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write_set[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        write_set[2].pBufferInfo = &ssbo_info_previous;
+        write_set[2].pBufferInfo = &ssbo_info_current;
         write_set[2].descriptorCount = 1;
         write_set[2].dstBinding = 2;
         write_set[2].dstArrayElement = 0;
-        write_set[2].dstSet = descriptor_set_compute;
+        write_set[2].dstSet = compute_descriptor_set_;
 
         vkUpdateDescriptorSets(vulkan_device_, write_set.size(), write_set.data(), 0, nullptr);
-    
+    }
 
-        // Creating the compute pipeline
-        VkComputePipelineCreateInfo compute_pipeline_info;
-        compute_pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    VkPipelineLayoutCreateInfo pipeline_layout_info{};
+    pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_info.flags = 0;
+    pipeline_layout_info.pPushConstantRanges = nullptr;
+    pipeline_layout_info.pushConstantRangeCount = 0;
+    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = &compute_desc_set_layout_;
+    vkCreatePipelineLayout(vulkan_device_, &pipeline_layout_info, nullptr, &compute_pipeline_layout_);
 
+    VulkanShaderLoader shader_loader;
+    VkShaderModule compute_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\particle.spv"), vulkan_device_, nullptr);
+    VkPipelineShaderStageCreateInfo compute_pipeline_shader_stage_info{};
+    compute_pipeline_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    compute_pipeline_shader_stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    compute_pipeline_shader_stage_info.module = compute_shader;
+    compute_pipeline_shader_stage_info.pName = "main";
+
+    // Creating the compute pipeline
+    VkComputePipelineCreateInfo compute_pipeline_info;
+    compute_pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    compute_pipeline_info.layout = compute_pipeline_layout_;
+    compute_pipeline_info.stage = compute_pipeline_shader_stage_info;
+
+    vkCreateComputePipelines(vulkan_device_, VK_NULL_HANDLE, 1, &compute_pipeline_info, nullptr, &compute_pipeline_);
 }
 
 void VulkanGraphics::InitializeScene() {
@@ -1822,8 +1835,6 @@ VulkanGraphics::VulkanGraphics(BP_Window* window) :
 
     WindowData window_data = app_window_->GetWindowData();
 
-    CreateComputeResources();
-
     LOG;
     CreateVulkanSurface(window_data);
     SelectPhysicalDevice();
@@ -1849,6 +1860,8 @@ VulkanGraphics::VulkanGraphics(BP_Window* window) :
     CreateDescriptorSets();
     CreateCommandBuffer();
     CreateSyncObjects();
+
+    //CreateComputeResources();
 }
 
 VulkanGraphics::~VulkanGraphics() {
