@@ -84,8 +84,13 @@ class VulkanGraphics {
     std::vector<VkDeviceMemory> uniform_memory_;
     std::vector<void*> uniform_mapped_memory_;
 
+    // Compute
     std::vector<VkBuffer> storage_buffer;
     std::vector<VkDeviceMemory> storage_memory;
+    VkDescriptorSetLayout desc_layout_compute;
+    VkDescriptorPool compute_desc_pool;
+    VkDescriptorSet descriptor_set_compute;
+
 
     // ~Scene objects
 

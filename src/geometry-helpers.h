@@ -23,6 +23,12 @@ struct MeshPushConstants {
     glm::mat4 transform;
 };
 
+struct BP_Particle {
+    glm::vec2 position;
+    glm::vec2 velocity;
+    glm::vec4 color;
+};
+
 namespace backpack {
 
     struct Vertex {

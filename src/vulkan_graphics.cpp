@@ -15,6 +15,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <chrono>
+#include <random>
 
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
     if (messageSeverity >= VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
@@ -379,8 +380,9 @@ QueueFamilyIndices VulkanGraphics::FindQueueFamilies(VkPhysicalDevice device) {
 
     // Loop over queue families and specify their queue indices
     for (int i = 0; i < queue_count; i++) {
-        // The indices don't have to be in the same queue family, but if they are, the performance is better
-        if (family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+        // The indices don't have to be in the same queue family. Using multiple queues allow for asynchronous computation
+        // Get a queue for both graphics and compute
+        if (family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
             indices.graphics_index = i;
         }
 
@@ -912,6 +914,7 @@ void VulkanGraphics::CreateGraphicsPipeline() {
     VulkanShaderLoader shader_loader;
     VkShaderModule vertex_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\v_triangle.spv"), vulkan_device_, nullptr);
     VkShaderModule fragment_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\f_triangle.spv"), vulkan_device_, nullptr);
+    VkShaderModule compute_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\particle.spv"), vulkan_device_, nullptr);
 
     // Initialize shader stages
     VkPipelineShaderStageCreateInfo vertex_pipeline{};
@@ -925,6 +928,12 @@ void VulkanGraphics::CreateGraphicsPipeline() {
     fragment_pipeline.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     fragment_pipeline.module = fragment_shader;
     fragment_pipeline.pName = "main";
+
+    VkPipelineShaderStageCreateInfo compute_pipeline{};
+    compute_pipeline.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    compute_pipeline.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    compute_pipeline.module = compute_shader;
+    compute_pipeline.pName = "main";
 
     VkPipelineShaderStageCreateInfo shader_stages[]{ vertex_pipeline, fragment_pipeline };
 
@@ -1196,15 +1205,14 @@ BP_Texture VulkanGraphics::CreateTextureImage() {
     return bp_image;
 }
 
-BP_Texture VulkanGraphics::CreateColorResources()
-{
+BP_Texture VulkanGraphics::CreateColorResources() {
     // Create multi-sampled buffer
     CreateImage(swapchain_data_.extent.width, swapchain_data_.extent.height, 1, swapchain_data_.format, VkImageTiling::VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vulkan_device_, selected_device_,
         color_image_, color_image_memory_, device_sample_count);
 
     //Create image view for it
-   color_image_view_ = CreateImageView(vulkan_device_, color_image_, swapchain_data_.format, 1);
+    color_image_view_ = CreateImageView(vulkan_device_, color_image_, swapchain_data_.format, 1);
 
     BP_Texture color{};
     color.format = swapchain_data_.format;
@@ -1601,12 +1609,165 @@ void VulkanGraphics::RecreateSwapchain(const WindowData& window_data, VkPhysical
     CreateSyncObjects();
 }
 
-void VulkanGraphics::CreateComputeResources()
-{
-    VkDeviceSize size = sizeof(ShaderStorageBuffer);
+void VulkanGraphics::CreateComputeResources() {
+    storage_buffer.resize(MAX_FRAMES_IN_FLIGHT);
+    storage_memory.resize(MAX_FRAMES_IN_FLIGHT);
 
-    CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        storage_buffer[0], storage_memory[0], VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
+    // Random number generator
+    size_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::default_random_engine random_engine(seed);
+    std::uniform_real_distribution<float> random_dist(0.0f, 1.0f);
+
+    // Calculate initial particle positions
+    std::vector<BP_Particle> particles(100);
+    for (auto& particle : particles) {
+        float r = random_dist(random_engine) * 0.25f;
+        float theta = random_dist(random_engine) * glm::pi<float>() * 2.f;
+        particle.position.x = r * glm::cos(theta) * static_cast<float>(win_height_) / static_cast<float>(win_height_);
+        particle.position.y = r * glm::sin(theta);
+        particle.velocity = glm::normalize(particle.position) * 0.00025f;
+        particle.color = { random_dist(random_engine), random_dist(random_engine), random_dist(random_engine), random_dist(random_engine) };
+    }
+
+    VkDeviceSize size = sizeof(BP_Particle) * particles.size();
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_memory;
+
+    // Create staging buffer
+    CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        staging_buffer, staging_memory, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, nullptr);
+
+    void* data;
+    vkMapMemory(vulkan_device_, staging_memory, 0, size, 0, &data);
+    memcpy_s(data, size, particles.data(), size);
+    vkUnmapMemory(vulkan_device_, staging_memory);
+
+    // Create storage buffer and record copy commands
+    VkCommandBuffer cmd_buffer = BeginSingleTimeCommandBuffer(vulkan_device_, command_pool_);
+    // Will be used in compute shader as ssbo and in vertex shader as vbo
+    storage_buffer.resize(MAX_FRAMES_IN_FLIGHT);
+    storage_memory.resize(MAX_FRAMES_IN_FLIGHT);
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        CreateBuffer(vulkan_device_, selected_device_, size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            storage_buffer[i], storage_memory[i], VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
+
+        // Copy data
+        CmdCopyBuffer(cmd_buffer, staging_buffer, storage_buffer[i], size);
+    }
+    EndSingleTimeCommandBuffer(vulkan_device_, device_queues_.graphics_queue, command_pool_, cmd_buffer);
+
+    // Create descriptor set layouts
+    std::array<VkDescriptorSetLayoutBinding, 3> desc_set_layouts_bindings;
+    desc_set_layouts_bindings[0].binding = 0;
+    desc_set_layouts_bindings[0].descriptorCount = 1;
+    desc_set_layouts_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    desc_set_layouts_bindings[0].pImmutableSamplers = nullptr;
+    desc_set_layouts_bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    desc_set_layouts_bindings[1].binding = 1;
+    desc_set_layouts_bindings[1].descriptorCount = 1;
+    desc_set_layouts_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    desc_set_layouts_bindings[1].pImmutableSamplers = nullptr;
+    desc_set_layouts_bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    desc_set_layouts_bindings[2].binding = 2;
+    desc_set_layouts_bindings[2].descriptorCount = 1;
+    desc_set_layouts_bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    desc_set_layouts_bindings[2].pImmutableSamplers = nullptr;
+    desc_set_layouts_bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layout_info;
+    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_info.bindingCount = desc_set_layouts_bindings.size();
+    layout_info.pBindings = desc_set_layouts_bindings.data();
+
+    VkResult res = vkCreateDescriptorSetLayout(vulkan_device_, &layout_info, nullptr, &desc_layout_compute);
+    if (res != VK_SUCCESS) {
+        LOG << "Failed creating sync objects";
+        return;
+    }
+
+    // Create descriptor pool
+    VkDescriptorPoolSize ubo_pool_size{};
+    ubo_pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_pool_size.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolSize ssbo_pool_size{};
+    ssbo_pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ssbo_pool_size.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
+
+    std::array<VkDescriptorPoolSize, 2> pool_sizes = { ubo_pool_size, ssbo_pool_size };
+
+    VkDescriptorPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.poolSizeCount = pool_sizes.size();
+    pool_info.pPoolSizes = pool_sizes.data();
+    pool_info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    res = vkCreateDescriptorPool(vulkan_device_, &pool_info, nullptr, &compute_desc_pool);
+    if (res != VK_SUCCESS) {
+        LOG << "FAILURE\t Failed creating compute descriptor pool, error:" << res;
+    }
+
+    std::array<VkDescriptorSetLayout, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)> desc_set_layouts {desc_layout_compute};
+    VkDescriptorSetAllocateInfo allocate_info{};
+    allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocate_info.descriptorPool = compute_desc_pool;
+    allocate_info.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocate_info.pSetLayouts = desc_set_layouts.data();
+
+    vkAllocateDescriptorSets(vulkan_device_, &allocate_info, &descriptor_set_compute);
+
+    // Initialize descriptors
+    for (int i = 0; i < static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT); i++) {
+        VkDescriptorBufferInfo ubo_info{};
+        ubo_info.buffer = uniform_buffers_[i];
+        ubo_info.offset = 0;
+        ubo_info.range = VK_WHOLE_SIZE;
+
+        VkDescriptorBufferInfo ssbo_info_current{};
+        ubo_info.buffer = storage_buffer[i];
+        ubo_info.offset = 0;
+        ubo_info.range = VK_WHOLE_SIZE;
+
+        VkDescriptorBufferInfo ssbo_info_previous{};
+        ubo_info.buffer = storage_buffer[i - 1 % static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)];
+        ubo_info.offset = 0;
+        ubo_info.range = VK_WHOLE_SIZE;
+
+        std::array<VkWriteDescriptorSet, 3> write_set{};
+        write_set[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_set[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        write_set[0].pBufferInfo = &ubo_info;
+        write_set[0].descriptorCount = 1;
+        write_set[0].dstBinding = 0;
+        write_set[0].dstArrayElement = 0;
+        write_set[0].dstSet = descriptor_set_compute;
+
+        write_set[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_set[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write_set[1].pBufferInfo = &ssbo_info_current;
+        write_set[1].descriptorCount = 1;
+        write_set[1].dstBinding = 1;
+        write_set[1].dstArrayElement = 0;
+        write_set[1].dstSet = descriptor_set_compute;
+
+        write_set[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write_set[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write_set[2].pBufferInfo = &ssbo_info_previous;
+        write_set[2].descriptorCount = 1;
+        write_set[2].dstBinding = 2;
+        write_set[2].dstArrayElement = 0;
+        write_set[2].dstSet = descriptor_set_compute;
+
+        vkUpdateDescriptorSets(vulkan_device_, write_set.size(), write_set.data(), 0, nullptr);
+    
+
+        // Creating the compute pipeline
+        VkComputePipelineCreateInfo compute_pipeline_info;
+        compute_pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+
 }
 
 void VulkanGraphics::InitializeScene() {
@@ -1660,6 +1821,8 @@ VulkanGraphics::VulkanGraphics(BP_Window* window) :
     EnableVulkanDebugMessages();
 
     WindowData window_data = app_window_->GetWindowData();
+
+    CreateComputeResources();
 
     LOG;
     CreateVulkanSurface(window_data);
