@@ -218,6 +218,8 @@ public:
 
     void RecordCommandBuffer(const VkCommandBuffer& cmd_buffer, uint32_t img_index);
 
+    void RecordComputeWork();
+
     void CreateSyncObjects();
 
     void RenderFrame();

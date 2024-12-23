@@ -1670,14 +1670,14 @@ void VulkanGraphics::CreateComputeResources() {
     desc_set_layouts_bindings[2].pImmutableSamplers = nullptr;
     desc_set_layouts_bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    VkDescriptorSetLayoutCreateInfo layout_info;
+    VkDescriptorSetLayoutCreateInfo layout_info {};
     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = desc_set_layouts_bindings.size();
+    layout_info.bindingCount = static_cast<uint32_t>(desc_set_layouts_bindings.size());
     layout_info.pBindings = desc_set_layouts_bindings.data();
 
     VkResult res = vkCreateDescriptorSetLayout(vulkan_device_, &layout_info, nullptr, &compute_desc_set_layout_);
     if (res != VK_SUCCESS) {
-        LOG << "Failed creating sync objects";
+        LOG << "Failed creating compute descriptor layout";
         return;
     }
 
@@ -1703,11 +1703,11 @@ void VulkanGraphics::CreateComputeResources() {
         LOG << "FAILURE\t Failed creating compute descriptor pool, error:" << res;
     }
 
-    std::array<VkDescriptorSetLayout, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)> desc_set_layouts {compute_desc_set_layout_};
-    VkDescriptorSetAllocateInfo allocate_info{};
+    std::vector<VkDescriptorSetLayout> desc_set_layouts(static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), compute_desc_set_layout_);
+    VkDescriptorSetAllocateInfo allocate_info {};
     allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocate_info.descriptorPool = compute_desc_pool_;
-    allocate_info.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocate_info.descriptorSetCount = static_cast<uint32_t>(desc_set_layouts.size());
     allocate_info.pSetLayouts = desc_set_layouts.data();
 
     vkAllocateDescriptorSets(vulkan_device_, &allocate_info, &compute_descriptor_set_);
@@ -1720,14 +1720,15 @@ void VulkanGraphics::CreateComputeResources() {
         ubo_info.range = VK_WHOLE_SIZE;
 
         VkDescriptorBufferInfo ssbo_info_previous{};
-        ubo_info.buffer = storage_buffer_[i - 1 % static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)];
-        ubo_info.offset = 0;
-        ubo_info.range = VK_WHOLE_SIZE;
+        int index = (i - 1) % static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        ssbo_info_previous.buffer = storage_buffer_[index];
+        ssbo_info_previous.offset = 0;
+        ssbo_info_previous.range = VK_WHOLE_SIZE;
 
         VkDescriptorBufferInfo ssbo_info_current{};
-        ubo_info.buffer = storage_buffer_[i];
-        ubo_info.offset = 0;
-        ubo_info.range = VK_WHOLE_SIZE;
+        ssbo_info_current.buffer = storage_buffer_[i];
+        ssbo_info_current.offset = 0;
+        ssbo_info_current.range = VK_WHOLE_SIZE;
 
         std::array<VkWriteDescriptorSet, 3> write_set{};
         write_set[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1767,7 +1768,7 @@ void VulkanGraphics::CreateComputeResources() {
     vkCreatePipelineLayout(vulkan_device_, &pipeline_layout_info, nullptr, &compute_pipeline_layout_);
 
     VulkanShaderLoader shader_loader;
-    VkShaderModule compute_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\particle.spv"), vulkan_device_, nullptr);
+    VkShaderModule compute_shader = shader_loader.CreateShaderModule(shader_loader.LoadShader("..\\src\\shaders\\c_particle.spv"), vulkan_device_, nullptr);
     VkPipelineShaderStageCreateInfo compute_pipeline_shader_stage_info{};
     compute_pipeline_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     compute_pipeline_shader_stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -1775,7 +1776,7 @@ void VulkanGraphics::CreateComputeResources() {
     compute_pipeline_shader_stage_info.pName = "main";
 
     // Creating the compute pipeline
-    VkComputePipelineCreateInfo compute_pipeline_info;
+    VkComputePipelineCreateInfo compute_pipeline_info {};
     compute_pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     compute_pipeline_info.layout = compute_pipeline_layout_;
     compute_pipeline_info.stage = compute_pipeline_shader_stage_info;
@@ -1861,7 +1862,7 @@ VulkanGraphics::VulkanGraphics(BP_Window* window) :
     CreateCommandBuffer();
     CreateSyncObjects();
 
-    //CreateComputeResources();
+    CreateComputeResources();
 }
 
 VulkanGraphics::~VulkanGraphics() {
